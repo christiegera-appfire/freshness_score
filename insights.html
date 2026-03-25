@@ -234,7 +234,7 @@ async function generateReport() {
 
   try {
     var res = await fetch(
-      'https://bigquery.googleapis.com/bigquery/v2/projects/' + PROJECT + '/queries',
+      'https://freshness-score.netlify.app/.netlify/functions/claude' + PROJECT + '/queries',
       {
         method: 'POST',
         headers: { Authorization: 'Bearer ' + accessToken, 'Content-Type': 'application/json' },
