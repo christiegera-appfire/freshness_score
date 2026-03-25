@@ -59,7 +59,7 @@
       <div class="subtitle" id="last-updated"></div>
     </div>
     <div id="top-right">
-      <a id="insights-link" href="insights.html">✨ AI Insights Report</a>
+      <a id="insights-link" href="insights">✨ AI Insights Report</a>
       <span id="user-email"></span>
       <button id="signout-btn" onclick="signOut()">Sign out</button>
     </div>
@@ -94,23 +94,33 @@ var accessToken = null;
 var allData = [];
 var selectedProduct = 'ALL PRODUCTS';
 
-window.addEventListener('load', function() {
-  var token = localStorage.getItem('bq_token');
-  var email = localStorage.getItem('user_email');
-  if (token) {
-    accessToken = token;
-    document.getElementById('auth-section').style.display = 'none';
-    document.getElementById('app').style.display = 'block';
-    if (email) document.getElementById('user-email').textContent = email;
-    loadData();
-    return;
-  }
-  google.accounts.id.initialize({ client_id: CLIENT_ID, callback: onSignIn });
-  google.accounts.id.renderButton(
-    document.getElementById('signin-btn-container'),
-    { theme: 'filled_blue', size: 'large' }
-  );
-});
+function initGoogle() {
+  var attempts = 0;
+  var interval = setInterval(function() {
+    attempts++;
+    if (typeof google !== 'undefined' && google.accounts) {
+      clearInterval(interval);
+      var token = localStorage.getItem('bq_token');
+      var email = localStorage.getItem('user_email');
+      if (token) {
+        accessToken = token;
+        if (email) document.getElementById('user-email').textContent = email;
+        document.getElementById('auth-section').style.display = 'none';
+        document.getElementById('app').style.display = 'block';
+        loadData();
+        return;
+      }
+      google.accounts.id.initialize({ client_id: CLIENT_ID, callback: onSignIn });
+      google.accounts.id.renderButton(
+        document.getElementById('signin-btn-container'),
+        { theme: 'filled_blue', size: 'large' }
+      );
+    }
+    if (attempts > 40) clearInterval(interval);
+  }, 250);
+}
+
+window.addEventListener('load', initGoogle);
 
 function onSignIn(response) {
   try {
