@@ -27,10 +27,23 @@
   .spinner { width: 32px; height: 32px; border: 3px solid #334155; border-top-color: #4ade80; border-radius: 50%; animation: spin 0.8s linear infinite; margin: 0 auto 16px; }
   @keyframes spin { to { transform: rotate(360deg); } }
 
-  #pills { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 14px; }
-  .pill { padding: 4px 12px; border-radius: 999px; border: 1px solid #334155; background: transparent; color: #94a3b8; cursor: pointer; font-size: 10px; font-weight: 600; letter-spacing: 0.04em; text-transform: uppercase; transition: all 0.15s; }
-  .pill.active { border-color: #4ade80; background: #4ade80; color: #0f1117; }
-  .pill:hover:not(.active) { border-color: #64748b; color: #e2e8f0; }
+  #filter-wrap { position: relative; margin-bottom: 14px; display: flex; align-items: center; gap: 10px; }
+  #filter-btn { display: flex; align-items: center; gap: 8px; padding: 7px 14px; background: #1a1f2e; border: 1px solid #334155; border-radius: 8px; color: #e2e8f0; cursor: pointer; font-size: 12px; font-weight: 600; min-width: 220px; justify-content: space-between; }
+  #filter-btn:hover { border-color: #64748b; }
+  #filter-btn .arrow { color: #64748b; font-size: 10px; transition: transform 0.15s; }
+  #filter-btn.open .arrow { transform: rotate(180deg); }
+  #filter-clear { padding: 6px 12px; background: none; border: 1px solid #334155; border-radius: 6px; color: #94a3b8; cursor: pointer; font-size: 11px; display: none; }
+  #filter-clear:hover { border-color: #f87171; color: #f87171; }
+  #filter-dropdown { position: absolute; top: calc(100% + 4px); left: 0; background: #1a1f2e; border: 1px solid #334155; border-radius: 10px; z-index: 50; width: 280px; box-shadow: 0 8px 24px rgba(0,0,0,0.4); display: none; max-height: 360px; overflow: hidden; flex-direction: column; }
+  #filter-dropdown.open { display: flex; }
+  #filter-search { margin: 10px; padding: 7px 10px; background: #0f1117; border: 1px solid #334155; border-radius: 6px; color: #e2e8f0; font-size: 12px; outline: none; }
+  #filter-search::placeholder { color: #64748b; }
+  #filter-list { overflow-y: auto; max-height: 280px; padding: 4px 0; }
+  .filter-item { display: flex; align-items: center; gap: 10px; padding: 7px 14px; cursor: pointer; font-size: 12px; color: #94a3b8; transition: background 0.1s; }
+  .filter-item:hover { background: #0f1117; color: #e2e8f0; }
+  .filter-item.checked { color: #e2e8f0; }
+  .filter-item .check { width: 14px; height: 14px; border: 1px solid #334155; border-radius: 3px; flex-shrink: 0; display: flex; align-items: center; justify-content: center; font-size: 10px; }
+  .filter-item.checked .check { background: #4ade80; border-color: #4ade80; color: #0f1117; }
 
   #chart-and-cards { display: flex; gap: 12px; align-items: stretch; margin-bottom: 14px; }
   #chart-wrap { position: relative; background: #1a1f2e; border-radius: 12px; padding: 14px 14px 36px 36px; flex: 1; min-width: 0; }
@@ -76,7 +89,17 @@
   <div id="loading"><div class="spinner"></div>Loading BigQuery data…</div>
   <div id="error"></div>
   <div id="main" style="display:none">
-    <div id="pills"></div>
+    <div id="filter-wrap">
+      <button id="filter-btn" onclick="toggleDropdown()">
+        <span id="filter-label">All products</span>
+        <span class="arrow">▼</span>
+      </button>
+      <button id="filter-clear" onclick="clearFilter()">✕ Clear</button>
+      <div id="filter-dropdown">
+        <input id="filter-search" type="text" placeholder="Search products…" oninput="renderDropdown()" />
+        <div id="filter-list"></div>
+      </div>
+    </div>
     <div id="chart-and-cards">
       <div id="chart-wrap">
         <div id="y-label">↑ PAGE VIEWS (POPULARITY)</div>
@@ -231,6 +254,7 @@ var SPACE_LOOKUP = {
   'VISC': 'Visibility for Confluence (Cloud)',
   'VISS': 'Visibility for Confluence (DC)',
   'CVP': 'Visio for Confluence',
+  'JIFMT': 'Integration+ for Microsoft Teams',
   'JENK': 'Webhook to Jenkins for Bitbucket',
   'YACC': 'Yet Another Commit Checker',
   'RDD': 'Dashboard Hub',
@@ -416,25 +440,83 @@ async function loadData() {
 
 function renderAll() { renderPills(); renderChart(); renderCards(); }
 
-function renderPills() {
-  var products = ['ALL PRODUCTS'].concat(
-    Array.from(new Set(allData.map(function(d) { return d.product_display; }))).sort()
-  );
-  var wrap = document.getElementById('pills');
-  wrap.innerHTML = '';
-  products.forEach(function(p) {
-    var btn = document.createElement('button');
-    btn.className = 'pill' + (p === selectedProduct ? ' active' : '');
-    btn.textContent = p;
-    btn.onclick = function() { selectedProduct = p; renderAll(); };
-    wrap.appendChild(btn);
-  });
+var selectedProducts = []; // empty = all
+
+function toggleDropdown() {
+  var dd = document.getElementById('filter-dropdown');
+  var btn = document.getElementById('filter-btn');
+  var isOpen = dd.classList.contains('open');
+  if (isOpen) {
+    dd.classList.remove('open');
+    btn.classList.remove('open');
+  } else {
+    dd.classList.add('open');
+    btn.classList.add('open');
+    document.getElementById('filter-search').focus();
+    renderDropdown();
+  }
 }
 
+document.addEventListener('click', function(e) {
+  var wrap = document.getElementById('filter-wrap');
+  if (wrap && !wrap.contains(e.target)) {
+    document.getElementById('filter-dropdown').classList.remove('open');
+    document.getElementById('filter-btn').classList.remove('open');
+  }
+});
+
+function renderDropdown() {
+  var search = document.getElementById('filter-search').value.toLowerCase();
+  var products = Array.from(new Set(allData.map(function(d) { return d.product_display; }))).sort();
+  var filtered = search ? products.filter(function(p) { return p.toLowerCase().indexOf(search) !== -1; }) : products;
+  var list = document.getElementById('filter-list');
+  list.innerHTML = filtered.map(function(p) {
+    var checked = selectedProducts.indexOf(p) !== -1;
+    return '<div class="filter-item' + (checked ? ' checked' : '') + '" onclick="toggleProduct(\'' + p.replace(/'/g, "\\'") + '\')">'
+      + '<div class="check">' + (checked ? '✓' : '') + '</div>'
+      + p
+      + '</div>';
+  }).join('');
+}
+
+function toggleProduct(p) {
+  var idx = selectedProducts.indexOf(p);
+  if (idx === -1) selectedProducts.push(p);
+  else selectedProducts.splice(idx, 1);
+  updateFilterLabel();
+  renderDropdown();
+  renderChart();
+  renderCards();
+}
+
+function clearFilter() {
+  selectedProducts = [];
+  updateFilterLabel();
+  renderChart();
+  renderCards();
+}
+
+function updateFilterLabel() {
+  var label = document.getElementById('filter-label');
+  var clearBtn = document.getElementById('filter-clear');
+  if (selectedProducts.length === 0) {
+    label.textContent = 'All products';
+    clearBtn.style.display = 'none';
+  } else if (selectedProducts.length === 1) {
+    label.textContent = selectedProducts[0];
+    clearBtn.style.display = 'block';
+  } else {
+    label.textContent = selectedProducts.length + ' products selected';
+    clearBtn.style.display = 'block';
+  }
+}
+
+function renderPills() { renderDropdown(); }
+
 function renderChart() {
-  var data = selectedProduct === 'ALL PRODUCTS'
+  var data = selectedProducts.length === 0
     ? allData
-    : allData.filter(function(d) { return d.product_display === selectedProduct; });
+    : allData.filter(function(d) { return selectedProducts.indexOf(d.product_display) !== -1; });
   var svg = document.getElementById('chart');
   svg.innerHTML = '';
   var W = 600, H = 380, maxDays = 500;
@@ -476,7 +558,7 @@ function renderChart() {
 }
 
 function renderCards() {
-  var data = selectedProduct === 'ALL PRODUCTS' ? allData : allData.filter(function(d) { return d.product_display === selectedProduct; });
+  var data = selectedProducts.length === 0 ? allData : allData.filter(function(d) { return selectedProducts.indexOf(d.product_display) !== -1; });
   var sorted = allData.slice().sort(function(a,b) { return a.page_views - b.page_views; });
   var medianViews = sorted[Math.floor(sorted.length/2)].page_views;
   var keepAsIs = data.filter(function(d) { return (d.days_since_update||999)<=MEDIAN_DAYS && d.page_views>=medianViews; });
