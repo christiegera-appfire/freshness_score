@@ -54,7 +54,7 @@
 </div>
 
 <div id="app" style="display:none">
-  <a class="back-link" href="index.html">← Back to Quadrant</a>
+  <a class="back-link" href="/">← Back to Quadrant</a>
   <header>
     <div>
       <h1>📊 Content Insights Report</h1>
@@ -107,29 +107,39 @@
 
 <script>
 var CLIENT_ID = '733250877853-i9cnckq217cd1q4ot8e2fedor7e3lj1o.apps.googleusercontent.com';
-var ANTHROPIC_KEY = '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';
+var PROXY_URL = '/.netlify/functions/claude';
 var PROJECT = 'appfire-doc-analytics';
 var DATASET = 'analytics_480793413';
 var MEDIAN_DAYS = 180;
 var accessToken = null;
 var allData = [];
 
-window.addEventListener('load', function() {
-  var token = localStorage.getItem('bq_token');
-  var email = localStorage.getItem('user_email');
-  if (token) {
-    accessToken = token;
-    document.getElementById('auth-section').style.display = 'none';
-    document.getElementById('app').style.display = 'block';
-    if (email) document.getElementById('user-email').textContent = email;
-    return;
-  }
-  google.accounts.id.initialize({ client_id: CLIENT_ID, callback: onSignIn });
-  google.accounts.id.renderButton(
-    document.getElementById('signin-btn-container'),
-    { theme: 'filled_blue', size: 'large' }
-  );
-});
+function initGoogle() {
+  var attempts = 0;
+  var interval = setInterval(function() {
+    attempts++;
+    if (typeof google !== 'undefined' && google.accounts) {
+      clearInterval(interval);
+      var token = localStorage.getItem('bq_token');
+      var email = localStorage.getItem('user_email');
+      if (token) {
+        accessToken = token;
+        if (email) document.getElementById('user-email').textContent = email;
+        document.getElementById('auth-section').style.display = 'none';
+        document.getElementById('app').style.display = 'block';
+        return;
+      }
+      google.accounts.id.initialize({ client_id: CLIENT_ID, callback: onSignIn });
+      google.accounts.id.renderButton(
+        document.getElementById('signin-btn-container'),
+        { theme: 'filled_blue', size: 'large' }
+      );
+    }
+    if (attempts > 40) clearInterval(interval);
+  }, 250);
+}
+
+window.addEventListener('load', initGoogle);
 
 function onSignIn(response) {
   try {
@@ -137,12 +147,12 @@ function onSignIn(response) {
     var email = payload.email || '';
     localStorage.setItem('user_email', email);
     document.getElementById('user-email').textContent = email;
-} catch(e) {
-    ['ai-top','ai-urgent','ai-archive','ai-trend'].forEach(function(id) {
-      document.getElementById(id).textContent = 'Error: ' + e.message;
-    });
-    console.error('AI error:', e, aiJson);
-  }
+  } catch(e) {}
+  refreshToken(function() {
+    document.getElementById('auth-section').style.display = 'none';
+    document.getElementById('app').style.display = 'block';
+  });
+}
 
 function refreshToken(callback) {
   var tokenClient = google.accounts.oauth2.initTokenClient({
@@ -234,7 +244,7 @@ async function generateReport() {
 
   try {
     var res = await fetch(
-      'https://freshness-score.netlify.app/.netlify/functions/claude' + PROJECT + '/queries',
+      'https://bigquery.googleapis.com/bigquery/v2/projects/' + PROJECT + '/queries',
       {
         method: 'POST',
         headers: { Authorization: 'Bearer ' + accessToken, 'Content-Type': 'application/json' },
@@ -243,11 +253,7 @@ async function generateReport() {
     );
     var json = await res.json();
     if (json.error) {
-      if (json.error.code === 401) {
-        localStorage.removeItem('bq_token');
-        refreshToken(generateReport);
-        return;
-      }
+      if (json.error.code === 401) { localStorage.removeItem('bq_token'); refreshToken(generateReport); return; }
       showError(json.error.message); return;
     }
 
@@ -307,14 +313,9 @@ async function buildReport() {
     + 'Respond ONLY with valid JSON, no markdown: {"top_performers":"...","urgent_updates":"...","archive_candidates":"...","trend":"..."}';
 
   try {
-    var aiRes = await fetch('https://api.anthropic.com/v1/messages', {
+    var aiRes = await fetch(PROXY_URL, {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'x-api-key': ANTHROPIC_KEY,
-        'anthropic-version': '2023-06-01',
-        'anthropic-dangerous-allow-browser': 'true'
-      },
+      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         model: 'claude-sonnet-4-20250514',
         max_tokens: 1000,
@@ -322,7 +323,6 @@ async function buildReport() {
       })
     });
     var aiJson = await aiRes.json();
-    console.log('AI response:', aiJson);
     var text = aiJson.content && aiJson.content[0] ? aiJson.content[0].text : '{}';
     var insights = JSON.parse(text.replace(/```json|```/g,'').trim());
     document.getElementById('ai-top').textContent = insights.top_performers || '';
@@ -331,7 +331,7 @@ async function buildReport() {
     document.getElementById('ai-trend').textContent = insights.trend || '';
   } catch(e) {
     ['ai-top','ai-urgent','ai-archive','ai-trend'].forEach(function(id) {
-      document.getElementById(id).textContent = 'Could not generate AI insight.';
+      document.getElementById(id).textContent = 'Error: ' + e.message;
     });
   }
 
