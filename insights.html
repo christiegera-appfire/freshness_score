@@ -50,12 +50,7 @@
 
 <div id="auth-section">
   <h2>Sign in to generate AI insights</h2>
-  <div id="g_id_onload"
-    data-client_id="733250877853-i9cnckq217cd1q4ot8e2fedor7e3lj1o.apps.googleusercontent.com"
-    data-callback="onSignIn"
-    data-auto_select="false">
-  </div>
-  <div class="g_id_signin" data-type="standard" data-theme="filled_blue" data-size="large"></div>
+  <div id="signin-btn-container"></div>
 </div>
 
 <div id="app" style="display:none">
@@ -111,26 +106,77 @@
 </div>
 
 <script>
-const CLIENT_ID = '733250877853-i9cnckq217cd1q4ot8e2fedor7e3lj1o.apps.googleusercontent.com';
-const ANTHROPIC_KEY = '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';
-const PROJECT = 'appfire-doc-analytics';
-const DATASET = 'analytics_480793413';
-const MEDIAN_DAYS = 180;
+var CLIENT_ID = '733250877853-i9cnckq217cd1q4ot8e2fedor7e3lj1o.apps.googleusercontent.com';
+var ANTHROPIC_KEY = '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';
+var PROJECT = 'appfire-doc-analytics';
+var DATASET = 'analytics_480793413';
+var MEDIAN_DAYS = 180;
+var accessToken = null;
+var allData = [];
 
-let accessToken = null;
-let allData = [];
-
-// Restore session on page load — no SSO prompt if token already exists
 window.addEventListener('load', function() {
-  var token = sessionStorage.getItem('bq_token');
-  var email = sessionStorage.getItem('user_email');
+  var token = localStorage.getItem('bq_token');
+  var email = localStorage.getItem('user_email');
   if (token) {
+    // Session exists — skip Google entirely, go straight to app
     accessToken = token;
     document.getElementById('auth-section').style.display = 'none';
     document.getElementById('app').style.display = 'block';
     if (email) document.getElementById('user-email').textContent = email;
+    return;
   }
+  // No session — now initialize Google sign-in
+  google.accounts.id.initialize({ client_id: CLIENT_ID, callback: onSignIn });
+  google.accounts.id.renderButton(
+    document.getElementById('signin-btn-container'),
+    { theme: 'filled_blue', size: 'large' }
+  );
 });
+
+function onSignIn(response) {
+  try {
+    var payload = JSON.parse(atob(response.credential.split('.')[1]));
+    var email = payload.email || '';
+    sessionStorage.setItem('user_email', email);
+    document.getElementById('user-email').textContent = email;
+  } catch(e) {}
+
+  var tokenClient = google.accounts.oauth2.initTokenClient({
+    client_id: CLIENT_ID,
+    scope: 'https://www.googleapis.com/auth/bigquery.readonly',
+    callback: function(r) {
+      if (r.error) { showError('Auth error: ' + r.error); return; }
+      accessToken = r.access_token;
+      sessionStorage.setItem('bq_token', r.access_token);
+      document.getElementById('auth-section').style.display = 'none';
+      document.getElementById('app').style.display = 'block';
+    }
+  });
+  tokenClient.requestAccessToken({ prompt: '' });
+}
+
+function signOut() {
+  google.accounts.id.disableAutoSelect();
+  localStorage.removeItem('bq_token');
+  localStorage.removeItem('user_email');
+  accessToken = null;
+  document.getElementById('app').style.display = 'none';
+  document.getElementById('auth-section').style.display = 'flex';
+  // Re-init the sign-in button
+  google.accounts.id.initialize({ client_id: CLIENT_ID, callback: onSignIn });
+  google.accounts.id.renderButton(
+    document.getElementById('signin-btn-container'),
+    { theme: 'filled_blue', size: 'large' }
+  );
+}
+
+function showError(msg) {
+  document.getElementById('loading').style.display = 'none';
+  document.getElementById('generate-btn').disabled = false;
+  var el = document.getElementById('error');
+  el.style.display = 'block';
+  el.textContent = '⚠️ ' + msg;
+}
 
 function parseDays(raw, todayMs) {
   if (!raw) return null;
@@ -156,53 +202,6 @@ function bandFromDays(days) {
   if (days <= 180) return 'aging';
   if (days <= 365) return 'stale';
   return 'critical';
-}
-
-function onSignIn(response) {
-  try {
-    var payload = JSON.parse(atob(response.credential.split('.')[1]));
-    var email = payload.email || '';
-    document.getElementById('user-email').textContent = email;
-    sessionStorage.setItem('user_email', email);
-  } catch(e) {}
-
-  var cached = sessionStorage.getItem('bq_token');
-  if (cached) {
-    accessToken = cached;
-    document.getElementById('auth-section').style.display = 'none';
-    document.getElementById('app').style.display = 'block';
-    return;
-  }
-
-  var tokenClient = google.accounts.oauth2.initTokenClient({
-    client_id: CLIENT_ID,
-    scope: 'https://www.googleapis.com/auth/bigquery.readonly',
-    callback: function(r) {
-      if (r.error) { showError('Auth error: ' + r.error); return; }
-      accessToken = r.access_token;
-      sessionStorage.setItem('bq_token', r.access_token);
-      document.getElementById('auth-section').style.display = 'none';
-      document.getElementById('app').style.display = 'block';
-    }
-  });
-  tokenClient.requestAccessToken({ prompt: '' });
-}
-
-function signOut() {
-  google.accounts.id.disableAutoSelect();
-  sessionStorage.removeItem('bq_token');
-  sessionStorage.removeItem('user_email');
-  accessToken = null;
-  document.getElementById('auth-section').style.display = 'flex';
-  document.getElementById('app').style.display = 'none';
-}
-
-function showError(msg) {
-  document.getElementById('loading').style.display = 'none';
-  document.getElementById('generate-btn').disabled = false;
-  var el = document.getElementById('error');
-  el.style.display = 'block';
-  el.textContent = '⚠️ ' + msg;
 }
 
 async function generateReport() {
