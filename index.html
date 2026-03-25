@@ -443,6 +443,7 @@ function renderAll() { renderPills(); renderChart(); renderCards(); }
 var selectedProducts = []; // empty = all
 
 var ACCELERATE_APPS = [
+  'BigPicture Enterprise (Cloud)',
   '7pace Timetracker (Jira)',
   'Planning Poker',
   'Power Scripts',
@@ -492,9 +493,12 @@ function renderDropdown() {
   // Build preset options at top (only show when not searching)
   var presetHtml = '';
   if (!search) {
-    var accelerateActive = selectedProducts.length > 0 &&
-      ACCELERATE_APPS.every(function(p) { return selectedProducts.indexOf(p) !== -1; }) &&
-      selectedProducts.every(function(p) { return ACCELERATE_APPS.indexOf(p) !== -1; });
+    var availableAccelerate = ACCELERATE_APPS.filter(function(p) {
+      return allData.some(function(d) { return d.product_display === p; });
+    });
+    var accelerateActive = availableAccelerate.length > 0 &&
+      availableAccelerate.every(function(p) { return selectedProducts.indexOf(p) !== -1; }) &&
+      selectedProducts.every(function(p) { return availableAccelerate.indexOf(p) !== -1; });
     var allActive = selectedProducts.length === 0;
 
     presetHtml = '<div class="filter-item' + (accelerateActive ? ' checked' : '') + '" onclick="selectAccelerate()">'
@@ -546,8 +550,12 @@ function updateFilterLabel() {
     label.textContent = 'All apps';
     clearBtn.style.display = 'none';
   } else {
-    var accelerateActive = ACCELERATE_APPS.every(function(p) { return selectedProducts.indexOf(p) !== -1; }) &&
-      selectedProducts.every(function(p) { return ACCELERATE_APPS.indexOf(p) !== -1; });
+    var availableAccelerate = ACCELERATE_APPS.filter(function(p) {
+      return allData.some(function(d) { return d.product_display === p; });
+    });
+    var accelerateActive = availableAccelerate.length > 0 &&
+      availableAccelerate.every(function(p) { return selectedProducts.indexOf(p) !== -1; }) &&
+      selectedProducts.every(function(p) { return availableAccelerate.indexOf(p) !== -1; });
     if (accelerateActive) {
       label.textContent = 'Accelerate apps only';
     } else if (selectedProducts.length === 1) {
