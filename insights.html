@@ -225,11 +225,12 @@ async function generateReport() {
           WHEN REGEXP_CONTAINS(last_updated_raw, r'minute|second') THEN 0
           WHEN REGEXP_CONTAINS(last_updated_raw, r'\\d{1,2} \\w+, \\d{4}')
             THEN DATE_DIFF(
-              CURRENT_DATE(),
-              PARSE_DATE('%e %B %Y', REGEXP_REPLACE(
-                REGEXP_EXTRACT(last_updated_raw, r'(\\d{1,2} \\w+, \\d{4})'), ',', ''
-              )),
-              DAY
+                PARSE_DATE('%Y%m%d', '${endDate}'),
+  PARSE_DATE('%e %B %Y', REGEXP_REPLACE(
+    REGEXP_EXTRACT(last_updated_raw, r'(\\d{1,2} \\w+, \\d{4})'), ',', ''
+  )),
+  DAY
+)
             )
           ELSE NULL
         END AS days_since_update
