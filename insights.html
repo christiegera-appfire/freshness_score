@@ -1,54 +1,55 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-<meta charset="UTF-8" />
+<meta charset="UTF-8"/>
 <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-<title>Content Freshness Quadrant</title>
+<title>Content Insights Report</title>
 <script src="https://accounts.google.com/gsi/client" async defer></script>
 <style>
   * { box-sizing: border-box; margin: 0; padding: 0; }
-  body { background: #0f1117; color: #e2e8f0; font-family: system-ui, sans-serif; min-height: 100vh; padding: 24px; }
+  body { background: #0f1117; color: #e2e8f0; font-family: system-ui, sans-serif; min-height: 100vh; padding: 24px; max-width: 900px; margin: 0 auto; }
   #auth-section { display: flex; flex-direction: column; align-items: center; justify-content: center; min-height: 60vh; gap: 16px; }
   #auth-section h2 { color: #94a3b8; font-size: 16px; font-weight: 400; }
+  header { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 32px; }
+  h1 { font-size: 22px; font-weight: 700; color: #f1f5f9; }
+  .subtitle { font-size: 12px; color: #64748b; margin-top: 4px; }
+  #user-info { font-size: 12px; color: #64748b; display: flex; align-items: center; gap: 8px; }
   #signout-btn { background: none; border: 1px solid #334155; color: #94a3b8; padding: 6px 14px; border-radius: 6px; cursor: pointer; font-size: 12px; }
-  #signout-btn:hover { border-color: #64748b; color: #e2e8f0; }
-  #top-bar { display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px; }
-  #top-left h1 { font-size: 18px; font-weight: 700; color: #f1f5f9; }
-  #top-left .subtitle { font-size: 12px; color: #64748b; margin-top: 2px; }
-  #top-right { display: flex; align-items: center; gap: 12px; }
-  #user-email { font-size: 12px; color: #64748b; }
-  #insights-link { display: inline-block; padding: 7px 16px; border: 1px solid #4ade80; color: #4ade80; border-radius: 8px; font-size: 12px; font-weight: 600; text-decoration: none; transition: background 0.15s; }
-  #insights-link:hover { background: #4ade8022; }
-  #loading { text-align: center; padding: 60px; color: #64748b; font-size: 14px; }
+  #generate-btn { width: 100%; padding: 14px; background: #4ade80; color: #0f1117; border: none; border-radius: 10px; font-size: 14px; font-weight: 700; cursor: pointer; margin-bottom: 32px; transition: background 0.15s; }
+  #generate-btn:hover { background: #22c55e; }
+  #generate-btn:disabled { background: #334155; color: #64748b; cursor: not-allowed; }
+  #loading { text-align: center; padding: 60px; color: #64748b; font-size: 14px; display: none; }
   .spinner { width: 32px; height: 32px; border: 3px solid #334155; border-top-color: #4ade80; border-radius: 50%; animation: spin 0.8s linear infinite; margin: 0 auto 16px; }
   @keyframes spin { to { transform: rotate(360deg); } }
-  #pills { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 20px; }
-  .pill { padding: 6px 14px; border-radius: 999px; border: 1px solid #334155; background: transparent; color: #94a3b8; cursor: pointer; font-size: 11px; font-weight: 600; letter-spacing: 0.05em; text-transform: uppercase; transition: all 0.15s; }
-  .pill.active { border-color: #4ade80; background: #4ade80; color: #0f1117; }
-  .pill:hover:not(.active) { border-color: #64748b; color: #e2e8f0; }
-  #chart-wrap { position: relative; background: #1a1f2e; border-radius: 12px; padding: 16px 16px 40px 40px; margin-bottom: 20px; }
-  #y-label { position: absolute; left: 6px; top: 50%; transform: translateY(-50%) rotate(-90deg); font-size: 10px; color: #64748b; letter-spacing: 0.1em; white-space: nowrap; }
-  #x-label { text-align: center; font-size: 10px; color: #64748b; letter-spacing: 0.1em; margin-top: 8px; }
-  svg { width: 100%; height: auto; display: block; }
-  circle { cursor: pointer; }
-  #tooltip { position: fixed; background: #1e293b; border: 1px solid #334155; border-radius: 8px; padding: 10px 14px; font-size: 12px; pointer-events: none; z-index: 100; max-width: 220px; box-shadow: 0 4px 20px rgba(0,0,0,0.4); display: none; }
-  #tooltip .t-title { font-weight: 700; color: #f1f5f9; margin-bottom: 4px; }
-  #tooltip .t-product { color: #94a3b8; margin-bottom: 4px; }
-  #tooltip .t-band { font-weight: 600; }
-  #tooltip .t-meta { color: #64748b; margin-top: 4px; }
-  #cards { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; }
-  .card { background: #1a1f2e; border-radius: 10px; padding: 16px; }
-  .card-label { font-size: 10px; color: #64748b; letter-spacing: 0.1em; font-weight: 600; margin-bottom: 8px; text-transform: uppercase; }
-  .card-count { font-size: 36px; font-weight: 700; line-height: 1; margin-bottom: 6px; }
-  .card-desc { font-size: 11px; color: #64748b; }
-  #error { background: #3a1e1e; border: 1px solid #f87171; border-radius: 8px; padding: 16px; color: #f87171; font-size: 13px; margin-top: 20px; }
-  @media (max-width: 600px) { #cards { grid-template-columns: repeat(2, 1fr); } }
+  #report { display: none; }
+  .health-score { background: #1a1f2e; border-radius: 12px; padding: 24px; margin-bottom: 24px; text-align: center; }
+  .score { font-size: 72px; font-weight: 700; line-height: 1; }
+  .score-label { font-size: 13px; color: #64748b; margin-top: 8px; letter-spacing: 0.1em; text-transform: uppercase; }
+  .score-desc { font-size: 14px; color: #94a3b8; margin-top: 12px; }
+  .stats-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin-bottom: 24px; }
+  .stat { background: #1a1f2e; border-radius: 10px; padding: 16px; border-top: 2px solid; }
+  .stat-label { font-size: 10px; color: #64748b; letter-spacing: 0.1em; font-weight: 600; margin-bottom: 8px; text-transform: uppercase; }
+  .stat-count { font-size: 32px; font-weight: 700; line-height: 1; margin-bottom: 4px; }
+  .stat-desc { font-size: 11px; color: #64748b; }
+  .insight-section { background: #1a1f2e; border-radius: 12px; padding: 24px; margin-bottom: 16px; border-left: 3px solid; }
+  .insight-section h2 { font-size: 14px; font-weight: 700; letter-spacing: 0.05em; text-transform: uppercase; margin-bottom: 16px; }
+  .ai-text { font-size: 14px; color: #94a3b8; line-height: 1.7; }
+  .pages-list { margin-top: 16px; display: flex; flex-direction: column; gap: 8px; }
+  .page-item { background: #0f1117; border-radius: 8px; padding: 12px 14px; display: flex; justify-content: space-between; align-items: center; }
+  .page-name { font-size: 13px; color: #e2e8f0; }
+  .page-product { font-size: 11px; color: #64748b; margin-top: 2px; }
+  .page-meta { font-size: 11px; color: #64748b; text-align: right; white-space: nowrap; margin-left: 16px; }
+  .back-link { display: inline-block; color: #4ade80; font-size: 13px; text-decoration: none; margin-bottom: 24px; }
+  .back-link:hover { text-decoration: underline; }
+  #error { background: #3a1e1e; border: 1px solid #f87171; border-radius: 8px; padding: 16px; color: #f87171; font-size: 13px; margin-top: 20px; display: none; }
+  .generated-at { font-size: 11px; color: #334155; text-align: center; margin-top: 24px; }
+  @media (max-width: 600px) { .stats-grid { grid-template-columns: repeat(2, 1fr); } }
 </style>
 </head>
 <body>
 
 <div id="auth-section">
-  <h2>Sign in to load live BigQuery data</h2>
+  <h2>Sign in to generate AI insights</h2>
   <div id="g_id_onload"
     data-client_id="733250877853-i9cnckq217cd1q4ot8e2fedor7e3lj1o.apps.googleusercontent.com"
     data-callback="onSignIn"
@@ -58,124 +59,130 @@
 </div>
 
 <div id="app" style="display:none">
-  <div id="top-bar">
-    <div id="top-left">
-      <h1>Content Freshness Quadrant</h1>
-      <div class="subtitle" id="last-updated"></div>
+  <a class="back-link" href="index.html">← Back to Quadrant</a>
+  <header>
+    <div>
+      <h1>📊 Content Insights Report</h1>
+      <div class="subtitle" id="report-subtitle">Powered by live BigQuery data + Claude AI</div>
     </div>
-    <div id="top-right">
-      <a id="insights-link" href="insights.html">✨ AI Insights Report</a>
+    <div id="user-info">
       <span id="user-email"></span>
       <button id="signout-btn" onclick="signOut()">Sign out</button>
     </div>
-  </div>
-  <div id="loading"><div class="spinner"></div>Loading BigQuery data…</div>
-  <div id="error" style="display:none"></div>
-  <div id="main" style="display:none">
-    <div id="pills"></div>
-    <div id="chart-wrap">
-      <div id="y-label">↑ PAGE VIEWS (POPULARITY)</div>
-      <svg id="chart" viewBox="0 0 600 400" xmlns="http://www.w3.org/2000/svg"></svg>
-      <div id="x-label">← STALE &nbsp;&nbsp;&nbsp; CONTENT AGE (FRESHNESS) &nbsp;&nbsp;&nbsp; FRESH →</div>
-    </div>
-    <div id="cards"></div>
-  </div>
-</div>
+  </header>
 
-<div id="tooltip">
-  <div class="t-title" id="tt-title"></div>
-  <div class="t-product" id="tt-product"></div>
-  <div class="t-band" id="tt-band"></div>
-  <div class="t-meta" id="tt-meta"></div>
+  <button id="generate-btn" onclick="generateReport()">✨ Generate This Week's Insights</button>
+  <div id="loading"><div class="spinner"></div><div id="loading-msg">Loading BigQuery data…</div></div>
+  <div id="error"></div>
+
+  <div id="report">
+    <div class="health-score">
+      <div class="score" id="health-score-num">—</div>
+      <div class="score-label">Content Health Score</div>
+      <div class="score-desc" id="health-score-desc"></div>
+    </div>
+    <div class="stats-grid">
+      <div class="stat" style="border-color:#4ade80"><div class="stat-label">Keep As-Is</div><div class="stat-count" style="color:#4ade80" id="stat-keep">—</div><div class="stat-desc">Fresh & popular</div></div>
+      <div class="stat" style="border-color:#fb923c"><div class="stat-label">Update Urgently</div><div class="stat-count" style="color:#fb923c" id="stat-update">—</div><div class="stat-desc">Stale but popular</div></div>
+      <div class="stat" style="border-color:#94a3b8"><div class="stat-label">Promote</div><div class="stat-count" style="color:#94a3b8" id="stat-promote">—</div><div class="stat-desc">Fresh but low traffic</div></div>
+      <div class="stat" style="border-color:#f87171"><div class="stat-label">Archive</div><div class="stat-count" style="color:#f87171" id="stat-archive">—</div><div class="stat-desc">Old & low traffic</div></div>
+    </div>
+    <div class="insight-section" style="border-color:#4ade80">
+      <h2 style="color:#4ade80">⭐ Top Performers</h2>
+      <div class="ai-text" id="ai-top"></div>
+      <div class="pages-list" id="list-top"></div>
+    </div>
+    <div class="insight-section" style="border-color:#fb923c">
+      <h2 style="color:#fb923c">🚨 Update Urgently</h2>
+      <div class="ai-text" id="ai-urgent"></div>
+      <div class="pages-list" id="list-urgent"></div>
+    </div>
+    <div class="insight-section" style="border-color:#f87171">
+      <h2 style="color:#f87171">🗄️ Archive Candidates</h2>
+      <div class="ai-text" id="ai-archive"></div>
+      <div class="pages-list" id="list-archive"></div>
+    </div>
+    <div class="insight-section" style="border-color:#64748b">
+      <h2 style="color:#94a3b8">📈 Overall Health & Trend</h2>
+      <div class="ai-text" id="ai-trend"></div>
+    </div>
+    <div class="generated-at" id="generated-at"></div>
+  </div>
 </div>
 
 <script>
 const CLIENT_ID = '733250877853-i9cnckq217cd1q4ot8e2fedor7e3lj1o.apps.googleusercontent.com';
+const ANTHROPIC_KEY = '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';
 const PROJECT = 'appfire-doc-analytics';
 const DATASET = 'analytics_480793413';
-const COLORS = { fresh: '#4ade80', aging: '#fb923c', stale: '#f87171', critical: '#dc2626', unknown: '#6b7280' };
 const MEDIAN_DAYS = 180;
 
-let accessToken = null, allData = [], selectedProduct = 'ALL PRODUCTS';
+let accessToken = null;
+let allData = [];
 
-function buildQuery() {
-  const now = new Date();
-  const pad = n => String(n).padStart(2,'0');
-  const fmtSuffix = d => '' + d.getFullYear() + pad(d.getMonth()+1) + pad(d.getDate());
-  const endSuffix = fmtSuffix(now);
-  const startSuffix = fmtSuffix(new Date(now.getTime() - 14 * 86400000));
-  const isoEnd = now.getFullYear() + '-' + pad(now.getMonth()+1) + '-' + pad(now.getDate());
+// Restore session on page load — no SSO prompt if token already exists
+window.addEventListener('load', function() {
+  var token = sessionStorage.getItem('bq_token');
+  var email = sessionStorage.getItem('user_email');
+  if (token) {
+    accessToken = token;
+    document.getElementById('auth-section').style.display = 'none';
+    document.getElementById('app').style.display = 'block';
+    if (email) document.getElementById('user-email').textContent = email;
+  }
+});
 
-  return "WITH parsed AS ("
-    + " SELECT"
-    + "   (SELECT value.string_value FROM UNNEST(event_params) WHERE key = 'page_title') AS page_title,"
-    + "   (SELECT value.string_value FROM UNNEST(event_params) WHERE key = 'product_name') AS product_name,"
-    + "   (SELECT value.string_value FROM UNNEST(event_params) WHERE key = 'page_path') AS page_path,"
-    + "   (SELECT value.string_value FROM UNNEST(event_params) WHERE key = 'last_updated') AS last_updated_raw,"
-    + "   COUNT(*) AS page_views"
-    + " FROM `" + PROJECT + "." + DATASET + ".events_*`"
-    + " WHERE event_name = 'af_content_freshness'"
-    + "   AND _TABLE_SUFFIX BETWEEN '" + startSuffix + "' AND '" + endSuffix + "'"
-    + " GROUP BY 1,2,3,4"
-    + " HAVING page_title IS NOT NULL AND product_name IS NOT NULL"
-    + "),"
-    + " with_days AS ("
-    + " SELECT *,"
-    + "   CASE"
-    + "     WHEN REGEXP_CONTAINS(last_updated_raw, r'[0-9]+ days? ago')"
-    + "       THEN CAST(REGEXP_EXTRACT(last_updated_raw, r'([0-9]+) days? ago') AS INT64)"
-    + "     WHEN REGEXP_CONTAINS(last_updated_raw, r'a day ago') THEN 1"
-    + "     WHEN REGEXP_CONTAINS(last_updated_raw, r'minute|second') THEN 0"
-    + "     WHEN REGEXP_CONTAINS(last_updated_raw, r'[0-9]{1,2} [A-Za-z]+, [0-9]{4}')"
-    + "       THEN DATE_DIFF("
-    + "         DATE '" + isoEnd + "',"
-    + "         PARSE_DATE('%e %B %Y', REGEXP_REPLACE("
-    + "           REGEXP_EXTRACT(last_updated_raw, r'([0-9]{1,2} [A-Za-z]+, [0-9]{4})'), ',', ''"
-    + "         )),"
-    + "         DAY"
-    + "       )"
-    + "     ELSE NULL"
-    + "   END AS days_since_update"
-    + " FROM parsed"
-    + "),"
-    + " with_bands AS ("
-    + " SELECT *,"
-    + "   CASE"
-    + "     WHEN days_since_update IS NULL THEN 'unknown'"
-    + "     WHEN days_since_update <= 90 THEN 'fresh'"
-    + "     WHEN days_since_update <= 180 THEN 'aging'"
-    + "     WHEN days_since_update <= 365 THEN 'stale'"
-    + "     ELSE 'critical'"
-    + "   END AS freshness_band"
-    + " FROM with_days"
-    + ")"
-    + " SELECT page_title, product_name, page_path, days_since_update, freshness_band, page_views"
-    + " FROM with_bands"
-    + " ORDER BY page_views DESC"
-    + " LIMIT 200";
+function parseDays(raw, todayMs) {
+  if (!raw) return null;
+  var m = raw.match(/(\d+) days? ago/);
+  if (m) return parseInt(m[1]);
+  if (raw.indexOf('a day ago') !== -1) return 1;
+  if (raw.indexOf('minute') !== -1 || raw.indexOf('second') !== -1) return 0;
+  var dm = raw.match(/(\d{1,2}) ([A-Za-z]+),? (\d{4})/);
+  if (dm) {
+    var months = {January:0,February:1,March:2,April:3,May:4,June:5,July:6,August:7,September:8,October:9,November:10,December:11};
+    var month = months[dm[2]];
+    if (month !== undefined) {
+      var d = new Date(parseInt(dm[3]), month, parseInt(dm[1]));
+      return Math.round((todayMs - d.getTime()) / 86400000);
+    }
+  }
+  return null;
+}
+
+function bandFromDays(days) {
+  if (days === null) return 'unknown';
+  if (days <= 90) return 'fresh';
+  if (days <= 180) return 'aging';
+  if (days <= 365) return 'stale';
+  return 'critical';
 }
 
 function onSignIn(response) {
-  document.getElementById('auth-section').style.display = 'none';
-  document.getElementById('app').style.display = 'block';
   try {
-    const payload = JSON.parse(atob(response.credential.split('.')[1]));
-    const email = payload.email || '';
+    var payload = JSON.parse(atob(response.credential.split('.')[1]));
+    var email = payload.email || '';
     document.getElementById('user-email').textContent = email;
     sessionStorage.setItem('user_email', email);
   } catch(e) {}
 
-  const cached = sessionStorage.getItem('bq_token');
-  if (cached) { accessToken = cached; loadData(); return; }
+  var cached = sessionStorage.getItem('bq_token');
+  if (cached) {
+    accessToken = cached;
+    document.getElementById('auth-section').style.display = 'none';
+    document.getElementById('app').style.display = 'block';
+    return;
+  }
 
-  const tokenClient = google.accounts.oauth2.initTokenClient({
+  var tokenClient = google.accounts.oauth2.initTokenClient({
     client_id: CLIENT_ID,
     scope: 'https://www.googleapis.com/auth/bigquery.readonly',
-    callback: (r) => {
+    callback: function(r) {
       if (r.error) { showError('Auth error: ' + r.error); return; }
       accessToken = r.access_token;
       sessionStorage.setItem('bq_token', r.access_token);
-      loadData();
+      document.getElementById('auth-section').style.display = 'none';
+      document.getElementById('app').style.display = 'block';
     }
   });
   tokenClient.requestAccessToken({ prompt: '' });
@@ -190,136 +197,155 @@ function signOut() {
   document.getElementById('app').style.display = 'none';
 }
 
-async function loadData() {
-  try {
-    const res = await fetch(
-      'https://bigquery.googleapis.com/bigquery/v2/projects/' + PROJECT + '/queries',
-      {
-        method: 'POST',
-        headers: { Authorization: 'Bearer ' + accessToken, 'Content-Type': 'application/json' },
-        body: JSON.stringify({ query: buildQuery(), useLegacySql: false, timeoutMs: 30000 })
-      }
-    );
-    const json = await res.json();
-    if (json.error) { showError(json.error.message); return; }
-
-    const fields = json.schema.fields.map(f => f.name);
-    allData = (json.rows || []).map(row => {
-      const obj = {};
-      row.f.forEach((cell, i) => { obj[fields[i]] = cell.v; });
-      obj.days_since_update = obj.days_since_update ? parseFloat(obj.days_since_update) : null;
-      obj.page_views = parseInt(obj.page_views, 10);
-      return obj;
-    });
-
-    document.getElementById('last-updated').textContent =
-      'Live data · last 14 days · ' + allData.length + ' pages · refreshed ' + new Date().toLocaleTimeString();
-    document.getElementById('loading').style.display = 'none';
-    document.getElementById('main').style.display = 'block';
-    renderAll();
-  } catch(e) { showError(e.message); }
-}
-
 function showError(msg) {
   document.getElementById('loading').style.display = 'none';
-  const el = document.getElementById('error');
+  document.getElementById('generate-btn').disabled = false;
+  var el = document.getElementById('error');
   el.style.display = 'block';
   el.textContent = '⚠️ ' + msg;
 }
 
-function renderAll() { renderPills(); renderChart(); renderCards(); }
+async function generateReport() {
+  document.getElementById('generate-btn').disabled = true;
+  document.getElementById('loading').style.display = 'block';
+  document.getElementById('loading-msg').textContent = 'Loading BigQuery data…';
+  document.getElementById('error').style.display = 'none';
+  document.getElementById('report').style.display = 'none';
 
-function renderPills() {
-  const products = ['ALL PRODUCTS', ...Array.from(new Set(allData.map(d => d.product_name))).sort()];
-  const wrap = document.getElementById('pills');
-  wrap.innerHTML = '';
-  products.forEach(p => {
-    const btn = document.createElement('button');
-    btn.className = 'pill' + (p === selectedProduct ? ' active' : '');
-    btn.textContent = p;
-    btn.onclick = () => { selectedProduct = p; renderAll(); };
-    wrap.appendChild(btn);
-  });
-}
+  var now = new Date();
+  var pad = function(n) { return String(n).padStart(2,'0'); };
+  var fmtSuffix = function(d) { return '' + d.getFullYear() + pad(d.getMonth()+1) + pad(d.getDate()); };
+  var endSuffix = fmtSuffix(now);
+  var startSuffix = fmtSuffix(new Date(now.getTime() - 14 * 86400000));
 
-function renderChart() {
-  const data = selectedProduct === 'ALL PRODUCTS' ? allData : allData.filter(d => d.product_name === selectedProduct);
-  const svg = document.getElementById('chart');
-  svg.innerHTML = '';
-  const W = 600, H = 400, maxDays = 500;
-  const maxViews = Math.max(...allData.map(d => d.page_views));
-  const toX = d => (1 - Math.min((d.days_since_update || 0) / maxDays, 1)) * W;
-  const toY = d => (1 - Math.min(d.page_views / maxViews, 1)) * H;
-  const toR = d => 3 + (d.page_views / maxViews) * 12;
-  const ns = 'http://www.w3.org/2000/svg';
-  const rect = (x,y,w,h,fill,op) => { const el = document.createElementNS(ns,'rect'); el.setAttribute('x',x); el.setAttribute('y',y); el.setAttribute('width',w); el.setAttribute('height',h); el.setAttribute('fill',fill); el.setAttribute('opacity',op); svg.appendChild(el); };
-  const line = (x1,y1,x2,y2) => { const el = document.createElementNS(ns,'line'); el.setAttribute('x1',x1); el.setAttribute('y1',y1); el.setAttribute('x2',x2); el.setAttribute('y2',y2); el.setAttribute('stroke','#334155'); el.setAttribute('stroke-width','1'); el.setAttribute('stroke-dasharray','4,4'); svg.appendChild(el); };
-  const txt = (x,y,str,fill,size) => { const el = document.createElementNS(ns,'text'); el.setAttribute('x',x); el.setAttribute('y',y); el.setAttribute('fill',fill); el.setAttribute('font-size',size); el.setAttribute('font-weight','700'); el.setAttribute('letter-spacing','1'); el.setAttribute('font-family','system-ui,sans-serif'); el.textContent=str; svg.appendChild(el); };
+  var query = "SELECT"
+    + " (SELECT value.string_value FROM UNNEST(event_params) WHERE key = 'page_title') AS page_title,"
+    + " (SELECT value.string_value FROM UNNEST(event_params) WHERE key = 'product_name') AS product_name,"
+    + " (SELECT value.string_value FROM UNNEST(event_params) WHERE key = 'last_updated') AS last_updated_raw,"
+    + " COUNT(*) AS page_views"
+    + " FROM `" + PROJECT + "." + DATASET + ".events_*`"
+    + " WHERE event_name = 'af_content_freshness'"
+    + " AND _TABLE_SUFFIX BETWEEN '" + startSuffix + "' AND '" + endSuffix + "'"
+    + " GROUP BY 1,2,3"
+    + " HAVING page_title IS NOT NULL AND product_name IS NOT NULL"
+    + " ORDER BY page_views DESC"
+    + " LIMIT 200";
 
-  rect(0,0,300,200,'#1e3a2e',0.4); rect(300,0,300,200,'#1e3a2e',0.7);
-  rect(0,200,300,200,'#3a1e1e',0.4); rect(300,200,300,200,'#3a2a1e',0.4);
-  line(300,0,300,400); line(0,200,600,200);
-  txt(8,16,'FRESH','#4ade8088',9); txt(8,27,'UNPOPULAR','#4ade8088',9);
-  txt(308,16,'FRESH','#4ade80bb',9); txt(308,27,'POPULAR ✓','#4ade80bb',9);
-  txt(8,216,'STALE','#f8717188',9); txt(8,227,'UNPOPULAR','#f8717188',9);
-  txt(308,216,'STALE','#fb923cbb',9); txt(308,227,'POPULAR !','#fb923cbb',9);
+  try {
+    var res = await fetch(
+      'https://bigquery.googleapis.com/bigquery/v2/projects/' + PROJECT + '/queries',
+      {
+        method: 'POST',
+        headers: { Authorization: 'Bearer ' + accessToken, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ query: query, useLegacySql: false, timeoutMs: 30000 })
+      }
+    );
+    var json = await res.json();
+    if (json.error) { showError(json.error.message); return; }
 
-  const tt = document.getElementById('tooltip');
-  data.forEach(d => {
-    if (d.days_since_update === null) return;
-    const c = document.createElementNS(ns,'circle');
-    c.setAttribute('cx', toX(d)); c.setAttribute('cy', toY(d)); c.setAttribute('r', toR(d));
-    c.setAttribute('fill', COLORS[d.freshness_band] || '#6b7280'); c.setAttribute('opacity','0.85');
-    c.addEventListener('mouseenter', e => {
-      tt.style.display='block'; tt.style.left=(e.clientX+12)+'px'; tt.style.top=(e.clientY-10)+'px';
-      document.getElementById('tt-title').textContent = d.page_title;
-      document.getElementById('tt-product').textContent = d.product_name;
-      document.getElementById('tt-band').textContent = d.freshness_band.toUpperCase();
-      document.getElementById('tt-band').style.color = COLORS[d.freshness_band];
-      document.getElementById('tt-meta').textContent = d.days_since_update + ' days old · ' + d.page_views + ' views';
+    var todayMs = now.getTime();
+    var fields = json.schema.fields.map(function(f) { return f.name; });
+    allData = (json.rows || []).map(function(row) {
+      var obj = {};
+      row.f.forEach(function(cell, i) { obj[fields[i]] = cell.v; });
+      obj.page_views = parseInt(obj.page_views, 10);
+      obj.days_since_update = parseDays(obj.last_updated_raw, todayMs);
+      obj.freshness_band = bandFromDays(obj.days_since_update);
+      return obj;
     });
-    c.addEventListener('mousemove', e => { tt.style.left=(e.clientX+12)+'px'; tt.style.top=(e.clientY-10)+'px'; });
-    c.addEventListener('mouseleave', () => { tt.style.display='none'; });
-    svg.appendChild(c);
-  });
+
+    document.getElementById('loading-msg').textContent = 'Analysing with Claude AI…';
+    await buildReport();
+  } catch(e) { showError(e.message); }
 }
 
-function renderCards() {
-  const data = selectedProduct === 'ALL PRODUCTS' ? allData : allData.filter(d => d.product_name === selectedProduct);
-  const medianViews = [...allData].sort((a,b)=>a.page_views-b.page_views)[Math.floor(allData.length/2)].page_views;
-  const keepAsIs = data.filter(d=>(d.days_since_update||999)<=MEDIAN_DAYS && d.page_views>=medianViews);
-  const urgent   = data.filter(d=>(d.days_since_update||999)> MEDIAN_DAYS && d.page_views>=medianViews);
-  const promote  = data.filter(d=>(d.days_since_update||999)<=MEDIAN_DAYS && d.page_views< medianViews);
-  const archive  = data.filter(d=>(d.days_since_update||999)> MEDIAN_DAYS && d.page_views< medianViews);
-  const cards = [
-    {label:'KEEP AS-IS', count:keepAsIs.length, desc:'Fresh & popular – your best content', color:'#4ade80'},
-    {label:'UPDATE URGENTLY', count:urgent.length, desc:'High traffic but content is aging', color:'#fb923c'},
-    {label:'PROMOTE', count:promote.length, desc:'Good content, needs more visibility', color:'#94a3b8'},
-    {label:'ARCHIVE CANDIDATES', count:archive.length, desc:'Old & low traffic – review for removal', color:'#f87171'},
-  ];
-  document.getElementById('cards').innerHTML = cards.map(c =>
-    '<div class="card" style="border-top:2px solid ' + c.color + '">'
-    + '<div class="card-label">' + c.label + '</div>'
-    + '<div class="card-count" style="color:' + c.color + '">' + c.count + '</div>'
-    + '<div class="card-desc">' + c.desc + '</div>'
-    + '</div>'
-  ).join('');
+async function buildReport() {
+  var sorted = allData.slice().sort(function(a,b) { return a.page_views - b.page_views; });
+  var medianViews = sorted[Math.floor(sorted.length / 2)].page_views;
+
+  var keepAsIs = allData.filter(function(d) { return (d.days_since_update||999) <= MEDIAN_DAYS && d.page_views >= medianViews; });
+  var urgent   = allData.filter(function(d) { return (d.days_since_update||999) >  MEDIAN_DAYS && d.page_views >= medianViews; });
+  var promote  = allData.filter(function(d) { return (d.days_since_update||999) <= MEDIAN_DAYS && d.page_views <  medianViews; });
+  var archive  = allData.filter(function(d) { return (d.days_since_update||999) >  MEDIAN_DAYS && d.page_views <  medianViews; });
+
+  var withDays = allData.filter(function(d) { return d.days_since_update !== null; });
+  var freshCount = withDays.filter(function(d) { return d.days_since_update <= 90; }).length;
+  var healthScore = withDays.length ? Math.round((freshCount / withDays.length) * 100) : 0;
+  var healthColor = healthScore >= 70 ? '#4ade80' : healthScore >= 40 ? '#fb923c' : '#f87171';
+
+  document.getElementById('health-score-num').textContent = healthScore + '%';
+  document.getElementById('health-score-num').style.color = healthColor;
+  document.getElementById('health-score-desc').textContent =
+    healthScore >= 70 ? 'Your content is in great shape.' :
+    healthScore >= 40 ? 'Some content needs attention.' : 'Significant freshness issues to address.';
+
+  document.getElementById('stat-keep').textContent = keepAsIs.length;
+  document.getElementById('stat-update').textContent = urgent.length;
+  document.getElementById('stat-promote').textContent = promote.length;
+  document.getElementById('stat-archive').textContent = archive.length;
+
+  renderList('list-top', keepAsIs.slice(0,8));
+  renderList('list-urgent', urgent.slice(0,8));
+  renderList('list-archive', archive.slice(0,8));
+
+  var fmtPage = function(d) { return '- "' + d.page_title + '" (' + d.product_name + ') — ' + d.page_views + ' views, ' + d.days_since_update + ' days old'; };
+
+  var prompt = "You are a content strategist for Appfire, a B2B software company. Analyse this documentation data and write plain-English insights — direct, no bullet points, 2-3 sentences per section.\n\n"
+    + "DATA (last 14 days):\n"
+    + "- Total pages: " + allData.length + "\n"
+    + "- Health score: " + healthScore + "% fresh\n"
+    + "- Keep as-is: " + keepAsIs.length + " | Urgent: " + urgent.length + " | Promote: " + promote.length + " | Archive: " + archive.length + "\n\n"
+    + "TOP PERFORMERS:\n" + keepAsIs.slice(0,5).map(fmtPage).join('\n') + "\n\n"
+    + "URGENT UPDATES:\n" + urgent.slice(0,5).map(fmtPage).join('\n') + "\n\n"
+    + "ARCHIVE CANDIDATES:\n" + archive.slice(0,5).map(fmtPage).join('\n') + "\n\n"
+    + 'Respond ONLY with valid JSON, no markdown: {"top_performers":"...","urgent_updates":"...","archive_candidates":"...","trend":"..."}';
+
+  try {
+    var aiRes = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-api-key': ANTHROPIC_KEY,
+        'anthropic-version': '2023-06-01',
+        'anthropic-dangerous-allow-browser': 'true'
+      },
+      body: JSON.stringify({
+        model: 'claude-sonnet-4-20250514',
+        max_tokens: 1000,
+        messages: [{ role: 'user', content: prompt }]
+      })
+    });
+    var aiJson = await aiRes.json();
+    var text = aiJson.content && aiJson.content[0] ? aiJson.content[0].text : '{}';
+    var insights = JSON.parse(text.replace(/```json|```/g,'').trim());
+    document.getElementById('ai-top').textContent = insights.top_performers || '';
+    document.getElementById('ai-urgent').textContent = insights.urgent_updates || '';
+    document.getElementById('ai-archive').textContent = insights.archive_candidates || '';
+    document.getElementById('ai-trend').textContent = insights.trend || '';
+  } catch(e) {
+    ['ai-top','ai-urgent','ai-archive','ai-trend'].forEach(function(id) {
+      document.getElementById(id).textContent = 'Could not generate AI insight.';
+    });
+  }
+
+  var now2 = new Date();
+  document.getElementById('report-subtitle').textContent =
+    'Last 14 days · ' + allData.length + ' pages · ' + now2.toLocaleDateString('en-GB', {weekday:'long',year:'numeric',month:'long',day:'numeric'});
+  document.getElementById('generated-at').textContent = 'Generated at ' + now2.toLocaleTimeString();
+  document.getElementById('loading').style.display = 'none';
+  document.getElementById('report').style.display = 'block';
+  document.getElementById('generate-btn').disabled = false;
+  document.getElementById('generate-btn').textContent = '🔄 Regenerate Insights';
 }
-</script>
- <script>
-  // Auto-restore session if token exists
-  window.addEventListener('load', function() {
-    var token = sessionStorage.getItem('bq_token');
-    var email = sessionStorage.getItem('user_email');
-    if (token) {
-      accessToken = token;
-      document.getElementById('auth-section').style.display = 'none';
-      document.getElementById('app').style.display = 'block';
-      if (email) document.getElementById('user-email').textContent = email;
-      // index.html only — remove this line from insights.html:
-      loadData();
-    }
-  });
+
+function renderList(id, pages) {
+  document.getElementById(id).innerHTML = pages.map(function(d) {
+    return '<div class="page-item">'
+      + '<div><div class="page-name">' + d.page_title + '</div><div class="page-product">' + d.product_name + '</div></div>'
+      + '<div class="page-meta">' + d.page_views + ' views · ' + (d.days_since_update !== null ? d.days_since_update : '?') + ' days old</div>'
+      + '</div>';
+  }).join('');
+}
 </script>
 </body>
 </html>
