@@ -1,17 +1,51 @@
+const https = require('https');
+
 exports.handler = async function(event) {
-  const res = await fetch('https://api.anthropic.com/v1/messages', {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'x-api-key': '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',
-      'anthropic-version': '2023-06-01',
-    },
-    body: event.body
+  if (event.httpMethod === 'OPTIONS') {
+    return {
+      statusCode: 200,
+      headers: {
+        'Access-Control-Allow-Origin': '*',
+        'Access-Control-Allow-Methods': 'POST, OPTIONS',
+        'Access-Control-Allow-Headers': 'Content-Type',
+      },
+      body: ''
+    };
+  }
+
+  return new Promise((resolve) => {
+    const options = {
+      hostname: 'api.anthropic.com',
+      path: '/v1/messages',
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-api-key': process.env.ANTHROPIC_KEY,
+        'anthropic-version': '2023-06-01',
+      }
+    };
+
+    const req = https.request(options, (res) => {
+      let data = '';
+      res.on('data', chunk => { data += chunk; });
+      res.on('end', () => {
+        resolve({
+          statusCode: 200,
+          headers: { 'Access-Control-Allow-Origin': '*', 'Content-Type': 'application/json' },
+          body: data
+        });
+      });
+    });
+
+    req.on('error', (e) => {
+      resolve({
+        statusCode: 500,
+        headers: { 'Access-Control-Allow-Origin': '*' },
+        body: JSON.stringify({ error: e.message })
+      });
+    });
+
+    req.write(event.body);
+    req.end();
   });
-  const data = await res.json();
-  return {
-    statusCode: 200,
-    headers: { 'Access-Control-Allow-Origin': '*' },
-    body: JSON.stringify(data)
-  };
 };
