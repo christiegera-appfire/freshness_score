@@ -52,7 +52,7 @@
   <div id="g_id_onload"
     data-client_id="733250877853-i9cnckq217cd1q4ot8e2fedor7e3lj1o.apps.googleusercontent.com"
     data-callback="onSignIn"
-    data-auto_select="false">
+    data-auto_select="true">
   </div>
   <div class="g_id_signin" data-type="standard" data-theme="filled_blue" data-size="large"></div>
 </div>
@@ -183,8 +183,8 @@ function onSignIn(response) {
 
 function signOut() {
   google.accounts.id.disableAutoSelect();
-  sessionStorage.removeItem('bq_token');
-  sessionStorage.removeItem('user_email');
+  localStorage.removeItem('bq_token');
+  localStorage.removeItem('user_email');
   accessToken = null;
   document.getElementById('auth-section').style.display = 'flex';
   document.getElementById('app').style.display = 'none';
@@ -305,21 +305,6 @@ function renderCards() {
     + '</div>'
   ).join('');
 }
-</script>
-<script>
-  // Auto-restore session if token exists
-  window.addEventListener('load', function() {
-    var token = sessionStorage.getItem('bq_token');
-    var email = sessionStorage.getItem('user_email');
-    if (token) {
-      accessToken = token;
-      document.getElementById('auth-section').style.display = 'none';
-      document.getElementById('app').style.display = 'block';
-      if (email) document.getElementById('user-email').textContent = email;
-      // index.html only — remove this line from insights.html:
-      loadData();
-    }
-  });
 </script>
 </body>
 </html>
