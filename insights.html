@@ -1,0 +1,396 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>Content Insights Report</title>
+<script src="https://accounts.google.com/gsi/client" async defer></script>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { background: #0f1117; color: #e2e8f0; font-family: system-ui, sans-serif; min-height: 100vh; padding: 24px; max-width: 900px; margin: 0 auto; }
+
+  #auth-section { display: flex; flex-direction: column; align-items: center; justify-content: center; min-height: 60vh; gap: 16px; }
+  #auth-section h2 { color: #94a3b8; font-size: 16px; font-weight: 400; }
+
+  header { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 32px; }
+  h1 { font-size: 22px; font-weight: 700; color: #f1f5f9; }
+  .subtitle { font-size: 12px; color: #64748b; margin-top: 4px; }
+  #user-info { font-size: 12px; color: #64748b; display: flex; align-items: center; gap: 8px; }
+  #signout-btn { background: none; border: 1px solid #334155; color: #94a3b8; padding: 6px 14px; border-radius: 6px; cursor: pointer; font-size: 12px; }
+
+  #generate-btn { width: 100%; padding: 14px; background: #4ade80; color: #0f1117; border: none; border-radius: 10px; font-size: 14px; font-weight: 700; cursor: pointer; margin-bottom: 32px; transition: background 0.15s; }
+  #generate-btn:hover { background: #22c55e; }
+  #generate-btn:disabled { background: #334155; color: #64748b; cursor: not-allowed; }
+
+  #loading { text-align: center; padding: 60px; color: #64748b; font-size: 14px; display: none; }
+  .spinner { width: 32px; height: 32px; border: 3px solid #334155; border-top-color: #4ade80; border-radius: 50%; animation: spin 0.8s linear infinite; margin: 0 auto 16px; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  #report { display: none; }
+
+  .health-score { background: #1a1f2e; border-radius: 12px; padding: 24px; margin-bottom: 24px; text-align: center; }
+  .health-score .score { font-size: 72px; font-weight: 700; line-height: 1; }
+  .health-score .score-label { font-size: 13px; color: #64748b; margin-top: 8px; letter-spacing: 0.1em; text-transform: uppercase; }
+  .health-score .score-desc { font-size: 14px; color: #94a3b8; margin-top: 12px; }
+
+  .stats-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin-bottom: 24px; }
+  .stat { background: #1a1f2e; border-radius: 10px; padding: 16px; border-top: 2px solid; }
+  .stat-label { font-size: 10px; color: #64748b; letter-spacing: 0.1em; font-weight: 600; margin-bottom: 8px; text-transform: uppercase; }
+  .stat-count { font-size: 32px; font-weight: 700; line-height: 1; margin-bottom: 4px; }
+  .stat-desc { font-size: 11px; color: #64748b; }
+
+  .insight-section { background: #1a1f2e; border-radius: 12px; padding: 24px; margin-bottom: 16px; border-left: 3px solid; }
+  .insight-section h2 { font-size: 14px; font-weight: 700; letter-spacing: 0.05em; text-transform: uppercase; margin-bottom: 16px; display: flex; align-items: center; gap: 8px; }
+  .insight-section .ai-text { font-size: 14px; color: #94a3b8; line-height: 1.7; white-space: pre-wrap; }
+
+  .pages-list { margin-top: 16px; display: flex; flex-direction: column; gap: 8px; }
+  .page-item { background: #0f1117; border-radius: 8px; padding: 12px 14px; display: flex; justify-content: space-between; align-items: center; }
+  .page-item .page-name { font-size: 13px; color: #e2e8f0; }
+  .page-item .page-product { font-size: 11px; color: #64748b; margin-top: 2px; }
+  .page-item .page-meta { font-size: 11px; color: #64748b; text-align: right; white-space: nowrap; margin-left: 16px; }
+
+  .back-link { display: inline-block; color: #4ade80; font-size: 13px; text-decoration: none; margin-bottom: 24px; }
+  .back-link:hover { text-decoration: underline; }
+
+  #error { background: #3a1e1e; border: 1px solid #f87171; border-radius: 8px; padding: 16px; color: #f87171; font-size: 13px; margin-top: 20px; }
+
+  .generated-at { font-size: 11px; color: #334155; text-align: center; margin-top: 24px; }
+
+  @media (max-width: 600px) { .stats-grid { grid-template-columns: repeat(2, 1fr); } }
+</style>
+</head>
+<body>
+
+<div id="auth-section">
+  <h2>Sign in to generate AI insights</h2>
+  <div id="g_id_onload"
+    data-client_id="733250877853-i9cnckq217cd1q4ot8e2fedor7e3lj1o.apps.googleusercontent.com"
+    data-callback="onSignIn"
+    data-auto_select="true">
+  </div>
+  <div class="g_id_signin" data-type="standard" data-theme="filled_blue" data-size="large"></div>
+</div>
+
+<div id="app" style="display:none">
+  <a class="back-link" href="index.html">← Back to Quadrant</a>
+  <header>
+    <div>
+      <h1>📊 Content Insights Report</h1>
+      <div class="subtitle" id="report-subtitle">Powered by live BigQuery data + Claude AI</div>
+    </div>
+    <div id="user-info">
+      <span id="user-email"></span>
+      <button id="signout-btn" onclick="signOut()">Sign out</button>
+    </div>
+  </header>
+
+  <button id="generate-btn" onclick="generateReport()">✨ Generate This Week's Insights</button>
+
+  <div id="loading"><div class="spinner"></div><div id="loading-msg">Loading BigQuery data…</div></div>
+  <div id="error" style="display:none"></div>
+
+  <div id="report">
+    <div class="health-score">
+      <div class="score" id="health-score-num">—</div>
+      <div class="score-label">Content Health Score</div>
+      <div class="score-desc" id="health-score-desc"></div>
+    </div>
+
+    <div class="stats-grid">
+      <div class="stat" style="border-color:#4ade80">
+        <div class="stat-label">Keep As-Is</div>
+        <div class="stat-count" style="color:#4ade80" id="stat-keep">—</div>
+        <div class="stat-desc">Fresh & popular</div>
+      </div>
+      <div class="stat" style="border-color:#fb923c">
+        <div class="stat-label">Update Urgently</div>
+        <div class="stat-count" style="color:#fb923c" id="stat-update">—</div>
+        <div class="stat-desc">Stale but popular</div>
+      </div>
+      <div class="stat" style="border-color:#94a3b8">
+        <div class="stat-label">Promote</div>
+        <div class="stat-count" style="color:#94a3b8" id="stat-promote">—</div>
+        <div class="stat-desc">Fresh but low traffic</div>
+      </div>
+      <div class="stat" style="border-color:#f87171">
+        <div class="stat-label">Archive</div>
+        <div class="stat-count" style="color:#f87171" id="stat-archive">—</div>
+        <div class="stat-desc">Old & low traffic</div>
+      </div>
+    </div>
+
+    <div class="insight-section" style="border-color:#4ade80" id="section-top">
+      <h2 style="color:#4ade80">⭐ Top Performers</h2>
+      <div class="ai-text" id="ai-top"></div>
+      <div class="pages-list" id="list-top"></div>
+    </div>
+
+    <div class="insight-section" style="border-color:#fb923c" id="section-urgent">
+      <h2 style="color:#fb923c">🚨 Update Urgently</h2>
+      <div class="ai-text" id="ai-urgent"></div>
+      <div class="pages-list" id="list-urgent"></div>
+    </div>
+
+    <div class="insight-section" style="border-color:#f87171" id="section-archive">
+      <h2 style="color:#f87171">🗄️ Archive Candidates</h2>
+      <div class="ai-text" id="ai-archive"></div>
+      <div class="pages-list" id="list-archive"></div>
+    </div>
+
+    <div class="insight-section" style="border-color:#64748b">
+      <h2 style="color:#94a3b8">📈 Overall Health & Trend</h2>
+      <div class="ai-text" id="ai-trend"></div>
+    </div>
+
+    <div class="generated-at" id="generated-at"></div>
+  </div>
+</div>
+
+<script>
+const CLIENT_ID = '733250877853-i9cnckq217cd1q4ot8e2fedor7e3lj1o.apps.googleusercontent.com';
+const ANTHROPIC_KEY = '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';
+const PROJECT = 'appfire-doc-analytics';
+const DATASET = 'analytics_480793413';
+const MEDIAN_DAYS = 180;
+
+let accessToken = null;
+let allData = [];
+
+function onSignIn(response) {
+  document.getElementById('auth-section').style.display = 'none';
+  document.getElementById('app').style.display = 'block';
+  try {
+    const payload = JSON.parse(atob(response.credential.split('.')[1]));
+    document.getElementById('user-email').textContent = payload.email || '';
+  } catch(e) {}
+  const tokenClient = google.accounts.oauth2.initTokenClient({
+    client_id: CLIENT_ID,
+    scope: 'https://www.googleapis.com/auth/bigquery.readonly',
+    callback: (tokenResponse) => {
+      if (tokenResponse.error) { showError('Auth error: ' + tokenResponse.error); return; }
+      accessToken = tokenResponse.access_token;
+    }
+  });
+  tokenClient.requestAccessToken({ prompt: '' });
+}
+
+function signOut() {
+  google.accounts.id.disableAutoSelect();
+  accessToken = null;
+  document.getElementById('auth-section').style.display = 'flex';
+  document.getElementById('app').style.display = 'none';
+}
+
+function showError(msg) {
+  document.getElementById('loading').style.display = 'none';
+  const el = document.getElementById('error');
+  el.style.display = 'block';
+  el.textContent = '⚠️ ' + msg;
+}
+
+function setLoading(msg) {
+  document.getElementById('loading').style.display = 'block';
+  document.getElementById('loading-msg').textContent = msg;
+  document.getElementById('error').style.display = 'none';
+  document.getElementById('generate-btn').disabled = true;
+}
+
+async function generateReport() {
+  setLoading('Loading BigQuery data…');
+
+  const today = new Date();
+  const fmt = d => d.toISOString().slice(0,10).replace(/-/g,'');
+  const endDate = fmt(today);
+  const startDate = fmt(new Date(today - 14 * 86400000));
+
+  const query = `
+    WITH parsed AS (
+      SELECT
+        (SELECT value.string_value FROM UNNEST(event_params) WHERE key = 'page_title')   AS page_title,
+        (SELECT value.string_value FROM UNNEST(event_params) WHERE key = 'product_name') AS product_name,
+        (SELECT value.string_value FROM UNNEST(event_params) WHERE key = 'last_updated') AS last_updated_raw,
+        COUNT(*) AS page_views
+      FROM \`${PROJECT}.${DATASET}.events_*\`
+      WHERE event_name = 'af_content_freshness'
+        AND _TABLE_SUFFIX BETWEEN '${startDate}' AND '${endDate}'
+      GROUP BY 1,2,3,4
+      HAVING page_title IS NOT NULL AND product_name IS NOT NULL
+    ),
+    with_days AS (
+      SELECT *,
+        CASE
+          WHEN REGEXP_CONTAINS(last_updated_raw, r'(\\d+) days? ago')
+            THEN CAST(REGEXP_EXTRACT(last_updated_raw, r'(\\d+) days? ago') AS INT64)
+          WHEN REGEXP_CONTAINS(last_updated_raw, r'\\ba day ago\\b') THEN 1
+          WHEN REGEXP_CONTAINS(last_updated_raw, r'minute|second') THEN 0
+          WHEN REGEXP_CONTAINS(last_updated_raw, r'\\d{1,2} \\w+, \\d{4}')
+            THEN DATE_DIFF(
+              CURRENT_DATE(),
+              PARSE_DATE('%e %B %Y', REGEXP_REPLACE(
+                REGEXP_EXTRACT(last_updated_raw, r'(\\d{1,2} \\w+, \\d{4})'), ',', ''
+              )),
+              DAY
+            )
+          ELSE NULL
+        END AS days_since_update
+      FROM parsed
+    ),
+    with_bands AS (
+      SELECT *,
+        CASE
+          WHEN days_since_update IS NULL THEN 'unknown'
+          WHEN days_since_update <= 90   THEN 'fresh'
+          WHEN days_since_update <= 180  THEN 'aging'
+          WHEN days_since_update <= 365  THEN 'stale'
+          ELSE 'critical'
+        END AS freshness_band
+      FROM with_days
+    )
+    SELECT page_title, product_name, days_since_update, freshness_band, page_views
+    FROM with_bands
+    ORDER BY page_views DESC
+    LIMIT 200
+  `;
+
+  try {
+    const res = await fetch(
+      `https://bigquery.googleapis.com/bigquery/v2/projects/${PROJECT}/queries`,
+      {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${accessToken}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ query, useLegacySql: false, timeoutMs: 30000 })
+      }
+    );
+    const json = await res.json();
+    if (json.error) { showError(json.error.message); return; }
+
+    const fields = json.schema.fields.map(f => f.name);
+    allData = (json.rows || []).map(row => {
+      const obj = {};
+      row.f.forEach((cell, i) => { obj[fields[i]] = cell.v; });
+      obj.days_since_update = obj.days_since_update ? parseFloat(obj.days_since_update) : null;
+      obj.page_views = parseInt(obj.page_views, 10);
+      return obj;
+    });
+
+    setLoading('Analysing your content with Claude AI…');
+    await buildReport();
+  } catch(e) { showError(e.message); }
+}
+
+async function buildReport() {
+  const medianViews = [...allData].sort((a,b) => a.page_views - b.page_views)[Math.floor(allData.length/2)].page_views;
+
+  const keepAsIs   = allData.filter(d => (d.days_since_update||999) <= MEDIAN_DAYS && d.page_views >= medianViews);
+  const urgent     = allData.filter(d => (d.days_since_update||999) >  MEDIAN_DAYS && d.page_views >= medianViews);
+  const promote    = allData.filter(d => (d.days_since_update||999) <= MEDIAN_DAYS && d.page_views <  medianViews);
+  const archive    = allData.filter(d => (d.days_since_update||999) >  MEDIAN_DAYS && d.page_views <  medianViews);
+
+  // Health score: % of pages that are fresh
+  const withDays = allData.filter(d => d.days_since_update !== null);
+  const freshCount = withDays.filter(d => d.days_since_update <= 90).length;
+  const healthScore = withDays.length ? Math.round((freshCount / withDays.length) * 100) : 0;
+  const healthColor = healthScore >= 70 ? '#4ade80' : healthScore >= 40 ? '#fb923c' : '#f87171';
+
+  document.getElementById('health-score-num').textContent = healthScore + '%';
+  document.getElementById('health-score-num').style.color = healthColor;
+  document.getElementById('health-score-desc').textContent =
+    healthScore >= 70 ? 'Your content is in great shape.' :
+    healthScore >= 40 ? 'Some content needs attention.' :
+    'Significant freshness issues to address.';
+
+  document.getElementById('stat-keep').textContent = keepAsIs.length;
+  document.getElementById('stat-update').textContent = urgent.length;
+  document.getElementById('stat-promote').textContent = promote.length;
+  document.getElementById('stat-archive').textContent = archive.length;
+
+  // Render page lists
+  renderList('list-top', keepAsIs.slice(0, 8));
+  renderList('list-urgent', urgent.slice(0, 8));
+  renderList('list-archive', archive.slice(0, 8));
+
+  // Build data summary for Claude
+  const summary = `
+You are a content strategist analyst for Appfire, a B2B software company that makes Atlassian apps.
+You're analysing documentation page performance data. Write in a direct, plain-English style — no fluff, no bullet points, just 2-3 sharp sentences per section that a content team lead would find genuinely useful.
+
+DATA SUMMARY (last 14 days):
+- Total pages tracked: ${allData.length}
+- Content health score: ${healthScore}% (% of pages updated within 90 days)
+- Fresh & popular (keep as-is): ${keepAsIs.length} pages
+- Stale & popular (urgent updates): ${urgent.length} pages  
+- Fresh & unpopular (need promotion): ${promote.length} pages
+- Old & unpopular (archive candidates): ${archive.length} pages
+
+TOP PERFORMING PAGES (fresh + most viewed):
+${keepAsIs.slice(0,5).map(d => `- "${d.page_title}" (${d.product_name}) — ${d.page_views} views, ${d.days_since_update} days old`).join('\n')}
+
+MOST URGENT UPDATES (stale + high traffic):
+${urgent.slice(0,5).map(d => `- "${d.page_title}" (${d.product_name}) — ${d.page_views} views, ${d.days_since_update} days old`).join('\n')}
+
+ARCHIVE CANDIDATES (old + low traffic):
+${archive.slice(0,5).map(d => `- "${d.page_title}" (${d.product_name}) — ${d.page_views} views, ${d.days_since_update} days old`).join('\n')}
+
+Respond ONLY with a JSON object in this exact format, no markdown, no extra text:
+{
+  "top_performers": "2-3 sentence insight about what's working well",
+  "urgent_updates": "2-3 sentence insight about what needs immediate attention and why",
+  "archive_candidates": "2-3 sentence insight about the archive candidates",
+  "trend": "2-3 sentence overall health assessment and one specific recommendation for the team this week"
+}`;
+
+  try {
+    const aiRes = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-api-key': ANTHROPIC_KEY,
+        'anthropic-version': '2023-06-01',
+        'anthropic-dangerous-allow-browser': 'true'
+      },
+      body: JSON.stringify({
+        model: 'claude-sonnet-4-20250514',
+        max_tokens: 1000,
+        messages: [{ role: 'user', content: summary }]
+      })
+    });
+
+    const aiJson = await aiRes.json();
+    const text = aiJson.content?.[0]?.text || '{}';
+    const clean = text.replace(/```json|```/g, '').trim();
+    const insights = JSON.parse(clean);
+
+    document.getElementById('ai-top').textContent = insights.top_performers || '';
+    document.getElementById('ai-urgent').textContent = insights.urgent_updates || '';
+    document.getElementById('ai-archive').textContent = insights.archive_candidates || '';
+    document.getElementById('ai-trend').textContent = insights.trend || '';
+  } catch(e) {
+    document.getElementById('ai-top').textContent = 'Could not generate AI insight.';
+    document.getElementById('ai-urgent').textContent = 'Could not generate AI insight.';
+    document.getElementById('ai-archive').textContent = 'Could not generate AI insight.';
+    document.getElementById('ai-trend').textContent = 'Could not generate AI insight.';
+  }
+
+  document.getElementById('report-subtitle').textContent =
+    `Last 14 days · ${allData.length} pages · ${new Date().toLocaleDateString('en-GB', {weekday:'long', year:'numeric', month:'long', day:'numeric'})}`;
+  document.getElementById('generated-at').textContent = `Generated at ${new Date().toLocaleTimeString()}`;
+  document.getElementById('loading').style.display = 'none';
+  document.getElementById('report').style.display = 'block';
+  document.getElementById('generate-btn').disabled = false;
+  document.getElementById('generate-btn').textContent = '🔄 Regenerate Insights';
+}
+
+function renderList(id, pages) {
+  document.getElementById(id).innerHTML = pages.map(d => `
+    <div class="page-item">
+      <div>
+        <div class="page-name">${d.page_title}</div>
+        <div class="page-product">${d.product_name}</div>
+      </div>
+      <div class="page-meta">${d.page_views} views · ${d.days_since_update ?? '?'} days old</div>
+    </div>
+  `).join('');
+}
+</script>
+</body>
+</html>
