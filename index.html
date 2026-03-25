@@ -442,6 +442,24 @@ function renderAll() { renderPills(); renderChart(); renderCards(); }
 
 var selectedProducts = []; // empty = all
 
+var ACCELERATE_APPS = [
+  '7pace Timetracker (Jira)',
+  'Planning Poker',
+  'Power Scripts',
+  'JMWE (Cloud)',
+  'JMCF (Cloud)',
+  'JSU Automation Suite (Cloud)',
+  'JQL Search Extensions',
+  'Flow',
+  'Advanced Tables for Confluence',
+  'Comala Document Management (Cloud)',
+  'Configuration Manager for Jira',
+  'Connector for Salesforce & Jira',
+  'Dashboard Hub',
+  'Rich Filters for Jira Dashboards (Cloud)',
+  'Time to SLA (Cloud)',
+];
+
 function toggleDropdown() {
   var dd = document.getElementById('filter-dropdown');
   var btn = document.getElementById('filter-btn');
@@ -470,13 +488,38 @@ function renderDropdown() {
   var products = Array.from(new Set(allData.map(function(d) { return d.product_display; }))).sort();
   var filtered = search ? products.filter(function(p) { return p.toLowerCase().indexOf(search) !== -1; }) : products;
   var list = document.getElementById('filter-list');
-  list.innerHTML = filtered.map(function(p) {
+
+  // Build preset options at top (only show when not searching)
+  var presetHtml = '';
+  if (!search) {
+    var accelerateActive = selectedProducts.length > 0 &&
+      ACCELERATE_APPS.every(function(p) { return selectedProducts.indexOf(p) !== -1; }) &&
+      selectedProducts.every(function(p) { return ACCELERATE_APPS.indexOf(p) !== -1; });
+    var allActive = selectedProducts.length === 0;
+
+    presetHtml = '<div class="filter-item' + (accelerateActive ? ' checked' : '') + '" onclick="selectAccelerate()">'
+      + '<div class="check">' + (accelerateActive ? '✓' : '') + '</div>Accelerate apps only</div>'
+      + '<div class="filter-item' + (allActive ? ' checked' : '') + '" onclick="clearFilter()">'
+      + '<div class="check">' + (allActive ? '✓' : '') + '</div>All apps</div>'
+      + '<div style="border-top:1px solid #334155;margin:6px 0;"></div>';
+  }
+
+  list.innerHTML = presetHtml + filtered.map(function(p) {
     var checked = selectedProducts.indexOf(p) !== -1;
     return '<div class="filter-item' + (checked ? ' checked' : '') + '" onclick="toggleProduct(\'' + p.replace(/'/g, "\\'") + '\')">'
       + '<div class="check">' + (checked ? '✓' : '') + '</div>'
-      + p
-      + '</div>';
+      + p + '</div>';
   }).join('');
+}
+
+function selectAccelerate() {
+  selectedProducts = ACCELERATE_APPS.filter(function(p) {
+    return allData.some(function(d) { return d.product_display === p; });
+  });
+  updateFilterLabel();
+  renderDropdown();
+  renderChart();
+  renderCards();
 }
 
 function toggleProduct(p) {
@@ -500,13 +543,18 @@ function updateFilterLabel() {
   var label = document.getElementById('filter-label');
   var clearBtn = document.getElementById('filter-clear');
   if (selectedProducts.length === 0) {
-    label.textContent = 'All products';
+    label.textContent = 'All apps';
     clearBtn.style.display = 'none';
-  } else if (selectedProducts.length === 1) {
-    label.textContent = selectedProducts[0];
-    clearBtn.style.display = 'block';
   } else {
-    label.textContent = selectedProducts.length + ' products selected';
+    var accelerateActive = ACCELERATE_APPS.every(function(p) { return selectedProducts.indexOf(p) !== -1; }) &&
+      selectedProducts.every(function(p) { return ACCELERATE_APPS.indexOf(p) !== -1; });
+    if (accelerateActive) {
+      label.textContent = 'Accelerate apps only';
+    } else if (selectedProducts.length === 1) {
+      label.textContent = selectedProducts[0];
+    } else {
+      label.textContent = selectedProducts.length + ' products selected';
+    }
     clearBtn.style.display = 'block';
   }
 }
