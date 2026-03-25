@@ -32,7 +32,7 @@
   .stat-count { font-size: 32px; font-weight: 700; line-height: 1; margin-bottom: 4px; }
   .stat-desc { font-size: 11px; color: #64748b; }
   .insight-section { background: #1a1f2e; border-radius: 12px; padding: 24px; margin-bottom: 16px; border-left: 3px solid; }
-  .insight-section h2 { font-size: 14px; font-weight: 700; letter-spacing: 0.05em; text-transform: uppercase; margin-bottom: 16px; display: flex; align-items: center; gap: 8px; }
+  .insight-section h2 { font-size: 14px; font-weight: 700; letter-spacing: 0.05em; text-transform: uppercase; margin-bottom: 16px; }
   .ai-text { font-size: 14px; color: #94a3b8; line-height: 1.7; }
   .pages-list { margin-top: 16px; display: flex; flex-direction: column; gap: 8px; }
   .page-item { background: #0f1117; border-radius: 8px; padding: 12px 14px; display: flex; justify-content: space-between; align-items: center; }
@@ -120,19 +120,82 @@ const MEDIAN_DAYS = 180;
 let accessToken = null;
 let allData = [];
 
+function buildQuery() {
+  const now = new Date();
+  const pad = n => String(n).padStart(2,'0');
+  const fmtSuffix = d => '' + d.getFullYear() + pad(d.getMonth()+1) + pad(d.getDate());
+  const endSuffix = fmtSuffix(now);
+  const startSuffix = fmtSuffix(new Date(now.getTime() - 14 * 86400000));
+  const isoEnd = now.getFullYear() + '-' + pad(now.getMonth()+1) + '-' + pad(now.getDate());
+
+  return "WITH parsed AS ("
+    + " SELECT"
+    + "   (SELECT value.string_value FROM UNNEST(event_params) WHERE key = 'page_title') AS page_title,"
+    + "   (SELECT value.string_value FROM UNNEST(event_params) WHERE key = 'product_name') AS product_name,"
+    + "   (SELECT value.string_value FROM UNNEST(event_params) WHERE key = 'last_updated') AS last_updated_raw,"
+    + "   COUNT(*) AS page_views"
+    + " FROM `" + PROJECT + "." + DATASET + ".events_*`"
+    + " WHERE event_name = 'af_content_freshness'"
+    + "   AND _TABLE_SUFFIX BETWEEN '" + startSuffix + "' AND '" + endSuffix + "'"
+    + " GROUP BY 1,2,3"
+    + " HAVING page_title IS NOT NULL AND product_name IS NOT NULL"
+    + "),"
+    + " with_days AS ("
+    + " SELECT *,"
+    + "   CASE"
+    + "     WHEN REGEXP_CONTAINS(last_updated_raw, r'[0-9]+ days? ago')"
+    + "       THEN CAST(REGEXP_EXTRACT(last_updated_raw, r'([0-9]+) days? ago') AS INT64)"
+    + "     WHEN REGEXP_CONTAINS(last_updated_raw, r'a day ago') THEN 1"
+    + "     WHEN REGEXP_CONTAINS(last_updated_raw, r'minute|second') THEN 0"
+    + "     WHEN REGEXP_CONTAINS(last_updated_raw, r'[0-9]{1,2} [A-Za-z]+, [0-9]{4}')"
+    + "       THEN DATE_DIFF("
+    + "         DATE '" + isoEnd + "',"
+    + "         PARSE_DATE('%e %B %Y', REGEXP_REPLACE("
+    + "           REGEXP_EXTRACT(last_updated_raw, r'([0-9]{1,2} [A-Za-z]+, [0-9]{4})'), ',', ''"
+    + "         )),"
+    + "         DAY"
+    + "       )"
+    + "     ELSE NULL"
+    + "   END AS days_since_update"
+    + " FROM parsed"
+    + "),"
+    + " with_bands AS ("
+    + " SELECT *,"
+    + "   CASE"
+    + "     WHEN days_since_update IS NULL THEN 'unknown'"
+    + "     WHEN days_since_update <= 90 THEN 'fresh'"
+    + "     WHEN days_since_update <= 180 THEN 'aging'"
+    + "     WHEN days_since_update <= 365 THEN 'stale'"
+    + "     ELSE 'critical'"
+    + "   END AS freshness_band"
+    + " FROM with_days"
+    + ")"
+    + " SELECT page_title, product_name, days_since_update, freshness_band, page_views"
+    + " FROM with_bands"
+    + " ORDER BY page_views DESC"
+    + " LIMIT 200";
+}
+
 function onSignIn(response) {
   document.getElementById('auth-section').style.display = 'none';
   document.getElementById('app').style.display = 'block';
   try {
     const payload = JSON.parse(atob(response.credential.split('.')[1]));
-    document.getElementById('user-email').textContent = payload.email || '';
+    const email = payload.email || '';
+    document.getElementById('user-email').textContent = email;
+    sessionStorage.setItem('user_email', email);
   } catch(e) {}
+
+  const cached = sessionStorage.getItem('bq_token');
+  if (cached) { accessToken = cached; return; }
+
   const tokenClient = google.accounts.oauth2.initTokenClient({
     client_id: CLIENT_ID,
     scope: 'https://www.googleapis.com/auth/bigquery.readonly',
     callback: (r) => {
       if (r.error) { showError('Auth error: ' + r.error); return; }
       accessToken = r.access_token;
+      sessionStorage.setItem('bq_token', r.access_token);
     }
   });
   tokenClient.requestAccessToken({ prompt: '' });
@@ -140,6 +203,8 @@ function onSignIn(response) {
 
 function signOut() {
   google.accounts.id.disableAutoSelect();
+  sessionStorage.removeItem('bq_token');
+  sessionStorage.removeItem('user_email');
   accessToken = null;
   document.getElementById('auth-section').style.display = 'flex';
   document.getElementById('app').style.display = 'none';
@@ -160,72 +225,13 @@ async function generateReport() {
   document.getElementById('error').style.display = 'none';
   document.getElementById('report').style.display = 'none';
 
-  // Build date strings in YYYYMMDD format for table suffix
-  const now = new Date();
-  const pad = n => String(n).padStart(2,'0');
-  const fmtSuffix = d => '' + d.getFullYear() + pad(d.getMonth()+1) + pad(d.getDate());
-  const endDate = fmtSuffix(now);
-  const startDate = fmtSuffix(new Date(now.getTime() - 14 * 86400000));
-
-  // Also build ISO date string for DATE_DIFF reference
-  const isoEnd = now.getFullYear() + '-' + pad(now.getMonth()+1) + '-' + pad(now.getDate());
-
-  const query = [
-    "WITH parsed AS (",
-    "  SELECT",
-    "    (SELECT value.string_value FROM UNNEST(event_params) WHERE key = 'page_title') AS page_title,",
-    "    (SELECT value.string_value FROM UNNEST(event_params) WHERE key = 'product_name') AS product_name,",
-    "    (SELECT value.string_value FROM UNNEST(event_params) WHERE key = 'last_updated') AS last_updated_raw,",
-    "    COUNT(*) AS page_views",
-    "  FROM `" + PROJECT + "." + DATASET + ".events_*`",
-    "  WHERE event_name = 'af_content_freshness'",
-    "    AND _TABLE_SUFFIX BETWEEN '" + startDate + "' AND '" + endDate + "'",
-    "  GROUP BY 1,2,3",
-    "  HAVING page_title IS NOT NULL AND product_name IS NOT NULL",
-    "),",
-    "with_days AS (",
-    "  SELECT *,",
-    "    CASE",
-    "      WHEN REGEXP_CONTAINS(last_updated_raw, r'(\\d+) days? ago')",
-    "        THEN CAST(REGEXP_EXTRACT(last_updated_raw, r'(\\d+) days? ago') AS INT64)",
-    "      WHEN REGEXP_CONTAINS(last_updated_raw, r'\\ba day ago\\b') THEN 1",
-    "      WHEN REGEXP_CONTAINS(last_updated_raw, r'minute|second') THEN 0",
-    "      WHEN REGEXP_CONTAINS(last_updated_raw, r'\\d{1,2} \\w+, \\d{4}')",
-    "        THEN DATE_DIFF(",
-    "          DATE '" + isoEnd + "',",
-    "          PARSE_DATE('%e %B %Y', REGEXP_REPLACE(",
-    "            REGEXP_EXTRACT(last_updated_raw, r'(\\d{1,2} \\w+, \\d{4})'), ',', ''",
-    "          )),",
-    "          DAY",
-    "        )",
-    "      ELSE NULL",
-    "    END AS days_since_update",
-    "  FROM parsed",
-    "),",
-    "with_bands AS (",
-    "  SELECT *,",
-    "    CASE",
-    "      WHEN days_since_update IS NULL THEN 'unknown'",
-    "      WHEN days_since_update <= 90   THEN 'fresh'",
-    "      WHEN days_since_update <= 180  THEN 'aging'",
-    "      WHEN days_since_update <= 365  THEN 'stale'",
-    "      ELSE 'critical'",
-    "    END AS freshness_band",
-    "  FROM with_days",
-    ")",
-    "SELECT page_title, product_name, days_since_update, freshness_band, page_views",
-    "FROM with_bands",
-    "ORDER BY page_views DESC",
-    "LIMIT 200"
-  ].join("\n");
-
   try {
     const res = await fetch(
-      "https://bigquery.googleapis.com/bigquery/v2/projects/" + PROJECT + "/queries",
+      'https://bigquery.googleapis.com/bigquery/v2/projects/' + PROJECT + '/queries',
       {
         method: 'POST',
-        headers: { Authorization: "Bearer " + accessToken, 'Content-Type': 'application/json' },
-        body: JSON.stringify({ query, useLegacySql: false, timeoutMs: 30000 })
+        headers: { Authorization: 'Bearer ' + accessToken, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ query: buildQuery(), useLegacySql: false, timeoutMs: 30000 })
       }
     );
     const json = await res.json();
@@ -241,11 +247,11 @@ async function generateReport() {
     });
 
     document.getElementById('loading-msg').textContent = 'Analysing with Claude AI…';
-    await buildReport(isoEnd);
+    await buildReport();
   } catch(e) { showError(e.message); }
 }
 
-async function buildReport(isoEnd) {
+async function buildReport() {
   const sorted = [...allData].sort((a,b) => a.page_views - b.page_views);
   const medianViews = sorted[Math.floor(sorted.length / 2)].page_views;
 
@@ -274,16 +280,15 @@ async function buildReport(isoEnd) {
   renderList('list-urgent', urgent.slice(0,8));
   renderList('list-archive', archive.slice(0,8));
 
-  const prompt = "You are a content strategist for Appfire, a B2B software company. Analyse this documentation data and write plain-English insights — direct, no bullet points, 2-3 sentences per section.\n\n" +
-    "DATA (last 14 days):\n" +
-    "- Total pages: " + allData.length + "\n" +
-    "- Health score: " + healthScore + "% fresh\n" +
-    "- Keep as-is: " + keepAsIs.length + " | Urgent updates: " + urgent.length + " | Promote: " + promote.length + " | Archive: " + archive.length + "\n\n" +
-    "TOP PERFORMERS:\n" + keepAsIs.slice(0,5).map(d => '- "' + d.page_title + '" (' + d.product_name + ') — ' + d.page_views + ' views, ' + d.days_since_update + ' days old').join('\n') + "\n\n" +
-    "URGENT UPDATES:\n" + urgent.slice(0,5).map(d => '- "' + d.page_title + '" (' + d.product_name + ') — ' + d.page_views + ' views, ' + d.days_since_update + ' days old').join('\n') + "\n\n" +
-    "ARCHIVE CANDIDATES:\n" + archive.slice(0,5).map(d => '- "' + d.page_title + '" (' + d.product_name + ') — ' + d.page_views + ' views, ' + d.days_since_update + ' days old').join('\n') + "\n\n" +
-    "Respond ONLY with valid JSON, no markdown:\n" +
-    '{"top_performers":"...","urgent_updates":"...","archive_candidates":"...","trend":"..."}';
+  const prompt = "You are a content strategist for Appfire, a B2B software company. Analyse this documentation data and write plain-English insights — direct, no bullet points, 2-3 sentences per section.\n\n"
+    + "DATA (last 14 days):\n"
+    + "- Total pages: " + allData.length + "\n"
+    + "- Health score: " + healthScore + "% fresh\n"
+    + "- Keep as-is: " + keepAsIs.length + " | Urgent updates: " + urgent.length + " | Promote: " + promote.length + " | Archive: " + archive.length + "\n\n"
+    + "TOP PERFORMERS:\n" + keepAsIs.slice(0,5).map(d => '- "' + d.page_title + '" (' + d.product_name + ') — ' + d.page_views + ' views, ' + d.days_since_update + ' days old').join('\n') + "\n\n"
+    + "URGENT UPDATES:\n" + urgent.slice(0,5).map(d => '- "' + d.page_title + '" (' + d.product_name + ') — ' + d.page_views + ' views, ' + d.days_since_update + ' days old').join('\n') + "\n\n"
+    + "ARCHIVE CANDIDATES:\n" + archive.slice(0,5).map(d => '- "' + d.page_title + '" (' + d.product_name + ') — ' + d.page_views + ' views, ' + d.days_since_update + ' days old').join('\n') + "\n\n"
+    + 'Respond ONLY with valid JSON, no markdown: {"top_performers":"...","urgent_updates":"...","archive_candidates":"...","trend":"..."}';
 
   try {
     const aiRes = await fetch('https://api.anthropic.com/v1/messages', {
@@ -313,9 +318,10 @@ async function buildReport(isoEnd) {
     });
   }
 
+  const now = new Date();
   document.getElementById('report-subtitle').textContent =
-    'Last 14 days · ' + allData.length + ' pages · ' + new Date().toLocaleDateString('en-GB', {weekday:'long',year:'numeric',month:'long',day:'numeric'});
-  document.getElementById('generated-at').textContent = 'Generated at ' + new Date().toLocaleTimeString();
+    'Last 14 days · ' + allData.length + ' pages · ' + now.toLocaleDateString('en-GB', {weekday:'long',year:'numeric',month:'long',day:'numeric'});
+  document.getElementById('generated-at').textContent = 'Generated at ' + now.toLocaleTimeString();
   document.getElementById('loading').style.display = 'none';
   document.getElementById('report').style.display = 'block';
   document.getElementById('generate-btn').disabled = false;
@@ -324,10 +330,10 @@ async function buildReport(isoEnd) {
 
 function renderList(id, pages) {
   document.getElementById(id).innerHTML = pages.map(d =>
-    '<div class="page-item">' +
-    '<div><div class="page-name">' + d.page_title + '</div><div class="page-product">' + d.product_name + '</div></div>' +
-    '<div class="page-meta">' + d.page_views + ' views · ' + (d.days_since_update ?? '?') + ' days old</div>' +
-    '</div>'
+    '<div class="page-item">'
+    + '<div><div class="page-name">' + d.page_title + '</div><div class="page-product">' + d.product_name + '</div></div>'
+    + '<div class="page-meta">' + d.page_views + ' views · ' + (d.days_since_update ?? '?') + ' days old</div>'
+    + '</div>'
   ).join('');
 }
 </script>
