@@ -521,7 +521,7 @@ function renderChart() {
   svg.innerHTML = '';
   var W = 600, H = 380, maxDays = 500;
   var maxViews = Math.max.apply(null, allData.map(function(d) { return d.page_views; }));
-  var toX = function(d) { return (1 - Math.min((d.days_since_update || 0) / maxDays, 1)) * W; };
+  var toX = function(d) { return Math.min((d.days_since_update || 0) / maxDays, 1) * W; };
   var toY = function(d) { return (1 - Math.min(d.page_views / maxViews, 1)) * H; };
   var toR = function(d) { return 3 + (d.page_views / maxViews) * 12; };
   var ns = 'http://www.w3.org/2000/svg';
