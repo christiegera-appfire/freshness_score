@@ -1,0 +1,388 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>Content Freshness Quadrant</title>
+<script src="https://accounts.google.com/gsi/client" async defer></script>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { background: #0f1117; color: #e2e8f0; font-family: system-ui, sans-serif; min-height: 100vh; padding: 24px; }
+  h1 { font-size: 18px; font-weight: 700; color: #f1f5f9; margin-bottom: 4px; }
+  .subtitle { font-size: 12px; color: #64748b; margin-bottom: 20px; }
+
+  /* Auth */
+  #auth-section { display: flex; flex-direction: column; align-items: center; justify-content: center; min-height: 60vh; gap: 16px; }
+  #auth-section h2 { color: #94a3b8; font-size: 16px; font-weight: 400; }
+  #signout-btn { background: none; border: 1px solid #334155; color: #94a3b8; padding: 6px 14px; border-radius: 6px; cursor: pointer; font-size: 12px; }
+  #signout-btn:hover { border-color: #64748b; color: #e2e8f0; }
+  #user-info { font-size: 12px; color: #64748b; display: flex; align-items: center; gap: 8px; justify-content: flex-end; margin-bottom: 16px; }
+
+  /* Loading */
+  #loading { text-align: center; padding: 60px; color: #64748b; font-size: 14px; }
+  .spinner { width: 32px; height: 32px; border: 3px solid #334155; border-top-color: #4ade80; border-radius: 50%; animation: spin 0.8s linear infinite; margin: 0 auto 16px; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  /* Pills */
+  #pills { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 20px; }
+  .pill { padding: 6px 14px; border-radius: 999px; border: 1px solid #334155; background: transparent; color: #94a3b8; cursor: pointer; font-size: 11px; font-weight: 600; letter-spacing: 0.05em; text-transform: uppercase; transition: all 0.15s; }
+  .pill.active { border-color: #4ade80; background: #4ade80; color: #0f1117; }
+  .pill:hover:not(.active) { border-color: #64748b; color: #e2e8f0; }
+
+  /* Chart */
+  #chart-wrap { position: relative; background: #1a1f2e; border-radius: 12px; padding: 16px 16px 40px 40px; margin-bottom: 20px; }
+  #y-label { position: absolute; left: 6px; top: 50%; transform: translateY(-50%) rotate(-90deg); font-size: 10px; color: #64748b; letter-spacing: 0.1em; white-space: nowrap; }
+  #x-label { text-align: center; font-size: 10px; color: #64748b; letter-spacing: 0.1em; margin-top: 8px; }
+  svg { width: 100%; height: auto; display: block; }
+  circle { cursor: pointer; transition: opacity 0.15s; }
+  circle:hover { opacity: 1 !important; }
+
+  /* Tooltip */
+  #tooltip { position: fixed; background: #1e293b; border: 1px solid #334155; border-radius: 8px; padding: 10px 14px; font-size: 12px; pointer-events: none; z-index: 100; max-width: 220px; box-shadow: 0 4px 20px rgba(0,0,0,0.4); display: none; }
+  #tooltip .t-title { font-weight: 700; color: #f1f5f9; margin-bottom: 4px; }
+  #tooltip .t-product { color: #94a3b8; margin-bottom: 4px; }
+  #tooltip .t-band { font-weight: 600; }
+  #tooltip .t-meta { color: #64748b; margin-top: 4px; }
+
+  /* Cards */
+  #cards { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; }
+  .card { background: #1a1f2e; border-radius: 10px; padding: 16px; }
+  .card-label { font-size: 10px; color: #64748b; letter-spacing: 0.1em; font-weight: 600; margin-bottom: 8px; }
+  .card-count { font-size: 36px; font-weight: 700; line-height: 1; margin-bottom: 6px; }
+  .card-desc { font-size: 11px; color: #64748b; }
+
+  #error { background: #3a1e1e; border: 1px solid #f87171; border-radius: 8px; padding: 16px; color: #f87171; font-size: 13px; margin-top: 20px; }
+
+  @media (max-width: 600px) { #cards { grid-template-columns: repeat(2, 1fr); } }
+</style>
+</head>
+<body>
+
+<div id="auth-section">
+  <h2>Sign in to load live BigQuery data</h2>
+  <div id="g_id_onload"
+    data-client_id="733250877853-i9cnckq217cd1q4ot8e2fedor7e3lj1o.apps.googleusercontent.com"
+    data-callback="onSignIn"
+    data-auto_select="true">
+  </div>
+  <div class="g_id_signin" data-type="standard" data-theme="filled_blue" data-size="large" data-text="sign_in_with" data-shape="rectangular"></div>
+</div>
+
+<div id="app" style="display:none">
+  <div style="display:flex; justify-content:space-between; align-items:flex-start; margin-bottom:4px;">
+    <div>
+      <h1>Content Freshness Quadrant</h1>
+      <div class="subtitle" id="last-updated"></div>
+    </div>
+    <div id="user-info">
+      <span id="user-email"></span>
+      <button id="signout-btn" onclick="signOut()">Sign out</button>
+    </div>
+  </div>
+
+  <div id="loading"><div class="spinner"></div>Loading BigQuery data…</div>
+  <div id="error" style="display:none"></div>
+
+  <div id="main" style="display:none">
+    <div id="pills"></div>
+    <div id="chart-wrap">
+      <div id="y-label">↑ PAGE VIEWS (POPULARITY)</div>
+      <svg id="chart" viewBox="0 0 600 400" xmlns="http://www.w3.org/2000/svg"></svg>
+      <div id="x-label">← STALE &nbsp;&nbsp;&nbsp; CONTENT AGE (FRESHNESS) &nbsp;&nbsp;&nbsp; FRESH →</div>
+    </div>
+    <div id="cards"></div>
+  </div>
+</div>
+
+<div id="tooltip">
+  <div class="t-title" id="tt-title"></div>
+  <div class="t-product" id="tt-product"></div>
+  <div class="t-band" id="tt-band"></div>
+  <div class="t-meta" id="tt-meta"></div>
+</div>
+
+<script>
+const CLIENT_ID = '733250877853-i9cnckq217cd1q4ot8e2fedor7e3lj1o.apps.googleusercontent.com';
+const PROJECT = 'appfire-doc-analytics';
+const DATASET = 'analytics_480793413';
+
+const COLORS = { fresh: '#4ade80', aging: '#fb923c', stale: '#f87171', critical: '#dc2626', unknown: '#6b7280' };
+const MEDIAN_DAYS = 180;
+
+let accessToken = null;
+let allData = [];
+let selectedProduct = 'ALL PRODUCTS';
+
+function onSignIn(response) {
+  // Exchange id_token for access token via token endpoint
+  fetch('https://oauth2.googleapis.com/token', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+    body: new URLSearchParams({
+      code: response.credential,
+      client_id: CLIENT_ID,
+      grant_type: 'urn:ietf:params:oauth:grant-type:jwt-bearer',
+    })
+  });
+  // Use gapi for actual token
+  initGapi(response.credential);
+}
+
+function initGapi(credential) {
+  document.getElementById('auth-section').style.display = 'none';
+  document.getElementById('app').style.display = 'block';
+
+  // Decode JWT to get email
+  try {
+    const payload = JSON.parse(atob(credential.split('.')[1]));
+    document.getElementById('user-email').textContent = payload.email || '';
+  } catch(e) {}
+
+  // Use Google Identity Services token client for access token
+  const tokenClient = google.accounts.oauth2.initTokenClient({
+    client_id: CLIENT_ID,
+    scope: 'https://www.googleapis.com/auth/bigquery.readonly',
+    callback: (tokenResponse) => {
+      if (tokenResponse.error) { showError('Auth error: ' + tokenResponse.error); return; }
+      accessToken = tokenResponse.access_token;
+      loadData();
+    }
+  });
+  tokenClient.requestAccessToken({ prompt: '' });
+}
+
+function signOut() {
+  google.accounts.id.disableAutoSelect();
+  accessToken = null;
+  document.getElementById('auth-section').style.display = 'flex';
+  document.getElementById('app').style.display = 'none';
+}
+
+async function loadData() {
+  document.getElementById('loading').style.display = 'block';
+  document.getElementById('main').style.display = 'none';
+  document.getElementById('error').style.display = 'none';
+
+  // Get date range: last 14 days
+  const today = new Date();
+  const fmt = d => d.toISOString().slice(0,10).replace(/-/g,'');
+  const endDate = fmt(today);
+  const startDate = fmt(new Date(today - 14 * 86400000));
+
+  const query = `
+    WITH parsed AS (
+      SELECT
+        (SELECT value.string_value FROM UNNEST(event_params) WHERE key = 'page_title')   AS page_title,
+        (SELECT value.string_value FROM UNNEST(event_params) WHERE key = 'product_name') AS product_name,
+        (SELECT value.string_value FROM UNNEST(event_params) WHERE key = 'page_path')    AS page_path,
+        (SELECT value.string_value FROM UNNEST(event_params) WHERE key = 'last_updated') AS last_updated_raw,
+        COUNT(*) AS page_views
+      FROM \`${PROJECT}.${DATASET}.events_*\`
+      WHERE event_name = 'af_content_freshness'
+        AND _TABLE_SUFFIX BETWEEN '${startDate}' AND '${endDate}'
+      GROUP BY 1,2,3,4
+      HAVING page_title IS NOT NULL AND product_name IS NOT NULL
+    ),
+    with_days AS (
+      SELECT *,
+        CASE
+          WHEN REGEXP_CONTAINS(last_updated_raw, r'(\\d+) days? ago')
+            THEN CAST(REGEXP_EXTRACT(last_updated_raw, r'(\\d+) days? ago') AS INT64)
+          WHEN REGEXP_CONTAINS(last_updated_raw, r'\\ba day ago\\b') THEN 1
+          WHEN REGEXP_CONTAINS(last_updated_raw, r'minute|second') THEN 0
+          WHEN REGEXP_CONTAINS(last_updated_raw, r'\\d{1,2} \\w+, \\d{4}')
+            THEN DATE_DIFF(
+              CURRENT_DATE(),
+              PARSE_DATE('%e %B %Y', REGEXP_REPLACE(
+                REGEXP_EXTRACT(last_updated_raw, r'(\\d{1,2} \\w+, \\d{4})'), ',', ''
+              )),
+              DAY
+            )
+          ELSE NULL
+        END AS days_since_update
+      FROM parsed
+    ),
+    with_bands AS (
+      SELECT *,
+        CASE
+          WHEN days_since_update IS NULL THEN 'unknown'
+          WHEN days_since_update <= 90   THEN 'fresh'
+          WHEN days_since_update <= 180  THEN 'aging'
+          WHEN days_since_update <= 365  THEN 'stale'
+          ELSE 'critical'
+        END AS freshness_band
+      FROM with_days
+    )
+    SELECT page_title, product_name, page_path, days_since_update, freshness_band, page_views
+    FROM with_bands
+    ORDER BY page_views DESC
+    LIMIT 200
+  `;
+
+  try {
+    const res = await fetch(
+      `https://bigquery.googleapis.com/bigquery/v2/projects/${PROJECT}/queries`,
+      {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${accessToken}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ query, useLegacySql: false, timeoutMs: 30000 })
+      }
+    );
+    const json = await res.json();
+    if (json.error) { showError(json.error.message); return; }
+
+    const fields = json.schema.fields.map(f => f.name);
+    allData = (json.rows || []).map(row => {
+      const obj = {};
+      row.f.forEach((cell, i) => { obj[fields[i]] = cell.v; });
+      obj.days_since_update = obj.days_since_update ? parseFloat(obj.days_since_update) : null;
+      obj.page_views = parseInt(obj.page_views, 10);
+      return obj;
+    });
+
+    document.getElementById('last-updated').textContent =
+      `Live data · last ${14} days · ${allData.length} pages · refreshed ${new Date().toLocaleTimeString()}`;
+
+    document.getElementById('loading').style.display = 'none';
+    document.getElementById('main').style.display = 'block';
+    renderAll();
+  } catch(e) { showError(e.message); }
+}
+
+function showError(msg) {
+  document.getElementById('loading').style.display = 'none';
+  const el = document.getElementById('error');
+  el.style.display = 'block';
+  el.textContent = '⚠️ ' + msg;
+}
+
+function renderAll() {
+  renderPills();
+  renderChart();
+  renderCards();
+}
+
+function renderPills() {
+  const products = ['ALL PRODUCTS', ...Array.from(new Set(allData.map(d => d.product_name))).sort()];
+  const wrap = document.getElementById('pills');
+  wrap.innerHTML = '';
+  products.forEach(p => {
+    const btn = document.createElement('button');
+    btn.className = 'pill' + (p === selectedProduct ? ' active' : '');
+    btn.textContent = p;
+    btn.onclick = () => { selectedProduct = p; renderAll(); };
+    wrap.appendChild(btn);
+  });
+}
+
+function renderChart() {
+  const data = selectedProduct === 'ALL PRODUCTS' ? allData : allData.filter(d => d.product_name === selectedProduct);
+  const svg = document.getElementById('chart');
+  svg.innerHTML = '';
+
+  const W = 600, H = 400;
+  const maxDays = 500;
+  const maxViews = Math.max(...allData.map(d => d.page_views));
+
+  const toX = d => (1 - Math.min((d.days_since_update || 0) / maxDays, 1)) * W;
+  const toY = d => (1 - Math.min(d.page_views / maxViews, 1)) * H;
+  const toR = d => 3 + (d.page_views / maxViews) * 12;
+
+  const ns = 'http://www.w3.org/2000/svg';
+  const rect = (x, y, w, h, fill, op) => {
+    const el = document.createElementNS(ns, 'rect');
+    el.setAttribute('x', x); el.setAttribute('y', y);
+    el.setAttribute('width', w); el.setAttribute('height', h);
+    el.setAttribute('fill', fill); el.setAttribute('opacity', op);
+    svg.appendChild(el);
+  };
+  const line = (x1, y1, x2, y2) => {
+    const el = document.createElementNS(ns, 'line');
+    el.setAttribute('x1',x1); el.setAttribute('y1',y1);
+    el.setAttribute('x2',x2); el.setAttribute('y2',y2);
+    el.setAttribute('stroke','#334155'); el.setAttribute('stroke-width','1');
+    el.setAttribute('stroke-dasharray','4,4');
+    svg.appendChild(el);
+  };
+  const text = (x, y, str, fill, size, weight) => {
+    const el = document.createElementNS(ns, 'text');
+    el.setAttribute('x', x); el.setAttribute('y', y);
+    el.setAttribute('fill', fill); el.setAttribute('font-size', size);
+    el.setAttribute('font-weight', weight || '700');
+    el.setAttribute('letter-spacing', '1');
+    el.setAttribute('font-family', 'system-ui, sans-serif');
+    el.textContent = str;
+    svg.appendChild(el);
+  };
+
+  rect(0, 0, 300, 200, '#1e3a2e', 0.4);
+  rect(300, 0, 300, 200, '#1e3a2e', 0.7);
+  rect(0, 200, 300, 200, '#3a1e1e', 0.4);
+  rect(300, 200, 300, 200, '#3a2a1e', 0.4);
+  line(300, 0, 300, 400);
+  line(0, 200, 600, 200);
+
+  text(8, 16, 'FRESH', '#4ade8088', 9);
+  text(8, 27, 'UNPOPULAR', '#4ade8088', 9);
+  text(308, 16, 'FRESH', '#4ade80bb', 9);
+  text(308, 27, 'POPULAR ✓', '#4ade80bb', 9);
+  text(8, 216, 'STALE', '#f8717188', 9);
+  text(8, 227, 'UNPOPULAR', '#f8717188', 9);
+  text(308, 216, 'STALE', '#fb923cbb', 9);
+  text(308, 227, 'POPULAR !', '#fb923cbb', 9);
+
+  const tt = document.getElementById('tooltip');
+  data.forEach(d => {
+    if (d.days_since_update === null) return;
+    const circle = document.createElementNS(ns, 'circle');
+    circle.setAttribute('cx', toX(d));
+    circle.setAttribute('cy', toY(d));
+    circle.setAttribute('r', toR(d));
+    circle.setAttribute('fill', COLORS[d.freshness_band] || '#6b7280');
+    circle.setAttribute('opacity', '0.85');
+    circle.addEventListener('mouseenter', e => {
+      tt.style.display = 'block';
+      tt.style.left = (e.clientX + 12) + 'px';
+      tt.style.top = (e.clientY - 10) + 'px';
+      document.getElementById('tt-title').textContent = d.page_title;
+      document.getElementById('tt-product').textContent = d.product_name;
+      document.getElementById('tt-band').textContent = d.freshness_band.toUpperCase();
+      document.getElementById('tt-band').style.color = COLORS[d.freshness_band];
+      document.getElementById('tt-meta').textContent = `${d.days_since_update} days old · ${d.page_views} views`;
+    });
+    circle.addEventListener('mousemove', e => {
+      tt.style.left = (e.clientX + 12) + 'px';
+      tt.style.top = (e.clientY - 10) + 'px';
+    });
+    circle.addEventListener('mouseleave', () => { tt.style.display = 'none'; });
+    svg.appendChild(circle);
+  });
+}
+
+function renderCards() {
+  const data = selectedProduct === 'ALL PRODUCTS' ? allData : allData.filter(d => d.product_name === selectedProduct);
+  const medianViews = [...allData].sort((a,b) => a.page_views - b.page_views)[Math.floor(allData.length/2)].page_views;
+
+  const keepAsIs     = data.filter(d => (d.days_since_update||999) <= MEDIAN_DAYS && d.page_views >= medianViews);
+  const updateUrgent = data.filter(d => (d.days_since_update||999) >  MEDIAN_DAYS && d.page_views >= medianViews);
+  const promote      = data.filter(d => (d.days_since_update||999) <= MEDIAN_DAYS && d.page_views <  medianViews);
+  const archive      = data.filter(d => (d.days_since_update||999) >  MEDIAN_DAYS && d.page_views <  medianViews);
+
+  const cards = [
+    { label: 'KEEP AS-IS',        count: keepAsIs.length,     desc: 'Fresh & popular – your best content',      color: '#4ade80' },
+    { label: 'UPDATE URGENTLY',   count: updateUrgent.length, desc: 'High traffic but content is aging',         color: '#fb923c' },
+    { label: 'PROMOTE',           count: promote.length,      desc: 'Good content, needs more visibility',       color: '#94a3b8' },
+    { label: 'ARCHIVE CANDIDATES',count: archive.length,      desc: 'Old & low traffic – review for removal',   color: '#f87171' },
+  ];
+
+  document.getElementById('cards').innerHTML = cards.map(c => `
+    <div class="card" style="border-top: 2px solid ${c.color}">
+      <div class="card-label">${c.label}</div>
+      <div class="card-count" style="color:${c.color}">${c.count}</div>
+      <div class="card-desc">${c.desc}</div>
+    </div>
+  `).join('');
+}
+</script>
+</body>
+</html>
