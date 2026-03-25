@@ -137,12 +137,12 @@ function onSignIn(response) {
     var email = payload.email || '';
     localStorage.setItem('user_email', email);
     document.getElementById('user-email').textContent = email;
-  } catch(e) {}
-  refreshToken(function() {
-    document.getElementById('auth-section').style.display = 'none';
-    document.getElementById('app').style.display = 'block';
-  });
-}
+} catch(e) {
+    ['ai-top','ai-urgent','ai-archive','ai-trend'].forEach(function(id) {
+      document.getElementById(id).textContent = 'Error: ' + e.message;
+    });
+    console.error('AI error:', e, aiJson);
+  }
 
 function refreshToken(callback) {
   var tokenClient = google.accounts.oauth2.initTokenClient({
@@ -322,6 +322,7 @@ async function buildReport() {
       })
     });
     var aiJson = await aiRes.json();
+    console.log('AI response:', aiJson);
     var text = aiJson.content && aiJson.content[0] ? aiJson.content[0].text : '{}';
     var insights = JSON.parse(text.replace(/```json|```/g,'').trim());
     document.getElementById('ai-top').textContent = insights.top_performers || '';
