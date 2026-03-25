@@ -118,14 +118,12 @@ window.addEventListener('load', function() {
   var token = localStorage.getItem('bq_token');
   var email = localStorage.getItem('user_email');
   if (token) {
-    // Session exists — skip Google entirely, go straight to app
     accessToken = token;
     document.getElementById('auth-section').style.display = 'none';
     document.getElementById('app').style.display = 'block';
     if (email) document.getElementById('user-email').textContent = email;
     return;
   }
-  // No session — now initialize Google sign-in
   google.accounts.id.initialize({ client_id: CLIENT_ID, callback: onSignIn });
   google.accounts.id.renderButton(
     document.getElementById('signin-btn-container'),
@@ -137,19 +135,24 @@ function onSignIn(response) {
   try {
     var payload = JSON.parse(atob(response.credential.split('.')[1]));
     var email = payload.email || '';
-    sessionStorage.setItem('user_email', email);
+    localStorage.setItem('user_email', email);
     document.getElementById('user-email').textContent = email;
   } catch(e) {}
+  refreshToken(function() {
+    document.getElementById('auth-section').style.display = 'none';
+    document.getElementById('app').style.display = 'block';
+  });
+}
 
+function refreshToken(callback) {
   var tokenClient = google.accounts.oauth2.initTokenClient({
     client_id: CLIENT_ID,
     scope: 'https://www.googleapis.com/auth/bigquery.readonly',
     callback: function(r) {
-      if (r.error) { showError('Auth error: ' + r.error); return; }
+      if (r.error) { showError('Session expired. Please sign out and sign in again.'); return; }
       accessToken = r.access_token;
-      sessionStorage.setItem('bq_token', r.access_token);
-      document.getElementById('auth-section').style.display = 'none';
-      document.getElementById('app').style.display = 'block';
+      localStorage.setItem('bq_token', r.access_token);
+      if (callback) callback();
     }
   });
   tokenClient.requestAccessToken({ prompt: '' });
@@ -162,7 +165,6 @@ function signOut() {
   accessToken = null;
   document.getElementById('app').style.display = 'none';
   document.getElementById('auth-section').style.display = 'flex';
-  // Re-init the sign-in button
   google.accounts.id.initialize({ client_id: CLIENT_ID, callback: onSignIn });
   google.accounts.id.renderButton(
     document.getElementById('signin-btn-container'),
@@ -213,9 +215,9 @@ async function generateReport() {
 
   var now = new Date();
   var pad = function(n) { return String(n).padStart(2,'0'); };
-  var fmtSuffix = function(d) { return '' + d.getFullYear() + pad(d.getMonth()+1) + pad(d.getDate()); };
-  var endSuffix = fmtSuffix(now);
-  var startSuffix = fmtSuffix(new Date(now.getTime() - 14 * 86400000));
+  var fmt = function(d) { return '' + d.getFullYear() + pad(d.getMonth()+1) + pad(d.getDate()); };
+  var end = fmt(now);
+  var start = fmt(new Date(now.getTime() - 14 * 86400000));
 
   var query = "SELECT"
     + " (SELECT value.string_value FROM UNNEST(event_params) WHERE key = 'page_title') AS page_title,"
@@ -224,7 +226,7 @@ async function generateReport() {
     + " COUNT(*) AS page_views"
     + " FROM `" + PROJECT + "." + DATASET + ".events_*`"
     + " WHERE event_name = 'af_content_freshness'"
-    + " AND _TABLE_SUFFIX BETWEEN '" + startSuffix + "' AND '" + endSuffix + "'"
+    + " AND _TABLE_SUFFIX BETWEEN '" + start + "' AND '" + end + "'"
     + " GROUP BY 1,2,3"
     + " HAVING page_title IS NOT NULL AND product_name IS NOT NULL"
     + " ORDER BY page_views DESC"
@@ -240,7 +242,14 @@ async function generateReport() {
       }
     );
     var json = await res.json();
-    if (json.error) { showError(json.error.message); return; }
+    if (json.error) {
+      if (json.error.code === 401) {
+        localStorage.removeItem('bq_token');
+        refreshToken(generateReport);
+        return;
+      }
+      showError(json.error.message); return;
+    }
 
     var todayMs = now.getTime();
     var fields = json.schema.fields.map(function(f) { return f.name; });
@@ -261,7 +270,6 @@ async function generateReport() {
 async function buildReport() {
   var sorted = allData.slice().sort(function(a,b) { return a.page_views - b.page_views; });
   var medianViews = sorted[Math.floor(sorted.length / 2)].page_views;
-
   var keepAsIs = allData.filter(function(d) { return (d.days_since_update||999) <= MEDIAN_DAYS && d.page_views >= medianViews; });
   var urgent   = allData.filter(function(d) { return (d.days_since_update||999) >  MEDIAN_DAYS && d.page_views >= medianViews; });
   var promote  = allData.filter(function(d) { return (d.days_since_update||999) <= MEDIAN_DAYS && d.page_views <  medianViews; });
@@ -288,7 +296,6 @@ async function buildReport() {
   renderList('list-archive', archive.slice(0,8));
 
   var fmtPage = function(d) { return '- "' + d.page_title + '" (' + d.product_name + ') — ' + d.page_views + ' views, ' + d.days_since_update + ' days old'; };
-
   var prompt = "You are a content strategist for Appfire, a B2B software company. Analyse this documentation data and write plain-English insights — direct, no bullet points, 2-3 sentences per section.\n\n"
     + "DATA (last 14 days):\n"
     + "- Total pages: " + allData.length + "\n"
