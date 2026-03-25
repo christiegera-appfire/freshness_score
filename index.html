@@ -41,7 +41,7 @@
   .card-label { font-size: 10px; color: #64748b; letter-spacing: 0.1em; font-weight: 600; margin-bottom: 8px; text-transform: uppercase; }
   .card-count { font-size: 36px; font-weight: 700; line-height: 1; margin-bottom: 6px; }
   .card-desc { font-size: 11px; color: #64748b; }
-  #error { background: #3a1e1e; border: 1px solid #f87171; border-radius: 8px; padding: 16px; color: #f87171; font-size: 13px; margin-top: 20px; }
+  #error { background: #3a1e1e; border: 1px solid #f87171; border-radius: 8px; padding: 16px; color: #f87171; font-size: 13px; margin-top: 20px; display: none; }
   @media (max-width: 600px) { #cards { grid-template-columns: repeat(2, 1fr); } }
 </style>
 </head>
@@ -49,12 +49,7 @@
 
 <div id="auth-section">
   <h2>Sign in to load live BigQuery data</h2>
-  <div id="g_id_onload"
-    data-client_id="733250877853-i9cnckq217cd1q4ot8e2fedor7e3lj1o.apps.googleusercontent.com"
-    data-callback="onSignIn"
-    data-auto_select="true">
-  </div>
-  <div class="g_id_signin" data-type="standard" data-theme="filled_blue" data-size="large"></div>
+  <div id="signin-btn-container"></div>
 </div>
 
 <div id="app" style="display:none">
@@ -70,7 +65,7 @@
     </div>
   </div>
   <div id="loading"><div class="spinner"></div>Loading BigQuery data…</div>
-  <div id="error" style="display:none"></div>
+  <div id="error"></div>
   <div id="main" style="display:none">
     <div id="pills"></div>
     <div id="chart-wrap">
@@ -90,92 +85,56 @@
 </div>
 
 <script>
-const CLIENT_ID = '733250877853-i9cnckq217cd1q4ot8e2fedor7e3lj1o.apps.googleusercontent.com';
-const PROJECT = 'appfire-doc-analytics';
-const DATASET = 'analytics_480793413';
-const COLORS = { fresh: '#4ade80', aging: '#fb923c', stale: '#f87171', critical: '#dc2626', unknown: '#6b7280' };
-const MEDIAN_DAYS = 180;
+var CLIENT_ID = '733250877853-i9cnckq217cd1q4ot8e2fedor7e3lj1o.apps.googleusercontent.com';
+var PROJECT = 'appfire-doc-analytics';
+var DATASET = 'analytics_480793413';
+var COLORS = { fresh: '#4ade80', aging: '#fb923c', stale: '#f87171', critical: '#dc2626', unknown: '#6b7280' };
+var MEDIAN_DAYS = 180;
+var accessToken = null;
+var allData = [];
+var selectedProduct = 'ALL PRODUCTS';
 
-let accessToken = null, allData = [], selectedProduct = 'ALL PRODUCTS';
-
-function buildQuery() {
-  const now = new Date();
-  const pad = n => String(n).padStart(2,'0');
-  const fmtSuffix = d => '' + d.getFullYear() + pad(d.getMonth()+1) + pad(d.getDate());
-  const endSuffix = fmtSuffix(now);
-  const startSuffix = fmtSuffix(new Date(now.getTime() - 14 * 86400000));
-  const isoEnd = now.getFullYear() + '-' + pad(now.getMonth()+1) + '-' + pad(now.getDate());
-
-  return "WITH parsed AS ("
-    + " SELECT"
-    + "   (SELECT value.string_value FROM UNNEST(event_params) WHERE key = 'page_title') AS page_title,"
-    + "   (SELECT value.string_value FROM UNNEST(event_params) WHERE key = 'product_name') AS product_name,"
-    + "   (SELECT value.string_value FROM UNNEST(event_params) WHERE key = 'page_path') AS page_path,"
-    + "   (SELECT value.string_value FROM UNNEST(event_params) WHERE key = 'last_updated') AS last_updated_raw,"
-    + "   COUNT(*) AS page_views"
-    + " FROM `" + PROJECT + "." + DATASET + ".events_*`"
-    + " WHERE event_name = 'af_content_freshness'"
-    + "   AND _TABLE_SUFFIX BETWEEN '" + startSuffix + "' AND '" + endSuffix + "'"
-    + " GROUP BY 1,2,3,4"
-    + " HAVING page_title IS NOT NULL AND product_name IS NOT NULL"
-    + "),"
-    + " with_days AS ("
-    + " SELECT *,"
-    + "   CASE"
-    + "     WHEN REGEXP_CONTAINS(last_updated_raw, r'[0-9]+ days? ago')"
-    + "       THEN CAST(REGEXP_EXTRACT(last_updated_raw, r'([0-9]+) days? ago') AS INT64)"
-    + "     WHEN REGEXP_CONTAINS(last_updated_raw, r'a day ago') THEN 1"
-    + "     WHEN REGEXP_CONTAINS(last_updated_raw, r'minute|second') THEN 0"
-    + "     WHEN REGEXP_CONTAINS(last_updated_raw, r'[0-9]{1,2} [A-Za-z]+, [0-9]{4}')"
-    + "       THEN DATE_DIFF("
-    + "         DATE '" + isoEnd + "',"
-    + "         PARSE_DATE('%e %B %Y', REGEXP_REPLACE("
-    + "           REGEXP_EXTRACT(last_updated_raw, r'([0-9]{1,2} [A-Za-z]+, [0-9]{4})'), ',', ''"
-    + "         )),"
-    + "         DAY"
-    + "       )"
-    + "     ELSE NULL"
-    + "   END AS days_since_update"
-    + " FROM parsed"
-    + "),"
-    + " with_bands AS ("
-    + " SELECT *,"
-    + "   CASE"
-    + "     WHEN days_since_update IS NULL THEN 'unknown'"
-    + "     WHEN days_since_update <= 90 THEN 'fresh'"
-    + "     WHEN days_since_update <= 180 THEN 'aging'"
-    + "     WHEN days_since_update <= 365 THEN 'stale'"
-    + "     ELSE 'critical'"
-    + "   END AS freshness_band"
-    + " FROM with_days"
-    + ")"
-    + " SELECT page_title, product_name, page_path, days_since_update, freshness_band, page_views"
-    + " FROM with_bands"
-    + " ORDER BY page_views DESC"
-    + " LIMIT 200";
-}
+window.addEventListener('load', function() {
+  var token = localStorage.getItem('bq_token');
+  var email = localStorage.getItem('user_email');
+  if (token) {
+    accessToken = token;
+    document.getElementById('auth-section').style.display = 'none';
+    document.getElementById('app').style.display = 'block';
+    if (email) document.getElementById('user-email').textContent = email;
+    loadData();
+    return;
+  }
+  google.accounts.id.initialize({ client_id: CLIENT_ID, callback: onSignIn });
+  google.accounts.id.renderButton(
+    document.getElementById('signin-btn-container'),
+    { theme: 'filled_blue', size: 'large' }
+  );
+});
 
 function onSignIn(response) {
-  document.getElementById('auth-section').style.display = 'none';
-  document.getElementById('app').style.display = 'block';
   try {
-    const payload = JSON.parse(atob(response.credential.split('.')[1]));
-    const email = payload.email || '';
+    var payload = JSON.parse(atob(response.credential.split('.')[1]));
+    var email = payload.email || '';
+    localStorage.setItem('user_email', email);
     document.getElementById('user-email').textContent = email;
-    sessionStorage.setItem('user_email', email);
   } catch(e) {}
+  refreshToken(function() {
+    document.getElementById('auth-section').style.display = 'none';
+    document.getElementById('app').style.display = 'block';
+    loadData();
+  });
+}
 
-  const cached = sessionStorage.getItem('bq_token');
-  if (cached) { accessToken = cached; loadData(); return; }
-
-  const tokenClient = google.accounts.oauth2.initTokenClient({
+function refreshToken(callback) {
+  var tokenClient = google.accounts.oauth2.initTokenClient({
     client_id: CLIENT_ID,
     scope: 'https://www.googleapis.com/auth/bigquery.readonly',
-    callback: (r) => {
-      if (r.error) { showError('Auth error: ' + r.error); return; }
+    callback: function(r) {
+      if (r.error) { showError('Session expired. Please sign out and sign in again.'); return; }
       accessToken = r.access_token;
-      sessionStorage.setItem('bq_token', r.access_token);
-      loadData();
+      localStorage.setItem('bq_token', r.access_token);
+      if (callback) callback();
     }
   });
   tokenClient.requestAccessToken({ prompt: '' });
@@ -186,13 +145,76 @@ function signOut() {
   localStorage.removeItem('bq_token');
   localStorage.removeItem('user_email');
   accessToken = null;
-  document.getElementById('auth-section').style.display = 'flex';
   document.getElementById('app').style.display = 'none';
+  document.getElementById('main').style.display = 'none';
+  document.getElementById('auth-section').style.display = 'flex';
+  google.accounts.id.initialize({ client_id: CLIENT_ID, callback: onSignIn });
+  google.accounts.id.renderButton(
+    document.getElementById('signin-btn-container'),
+    { theme: 'filled_blue', size: 'large' }
+  );
+}
+
+function showError(msg) {
+  document.getElementById('loading').style.display = 'none';
+  var el = document.getElementById('error');
+  el.style.display = 'block';
+  el.textContent = '⚠️ ' + msg;
+}
+
+function buildQuery() {
+  var now = new Date();
+  var pad = function(n) { return String(n).padStart(2,'0'); };
+  var fmt = function(d) { return '' + d.getFullYear() + pad(d.getMonth()+1) + pad(d.getDate()); };
+  var end = fmt(now);
+  var start = fmt(new Date(now.getTime() - 14 * 86400000));
+  return "SELECT"
+    + " (SELECT value.string_value FROM UNNEST(event_params) WHERE key = 'page_title') AS page_title,"
+    + " (SELECT value.string_value FROM UNNEST(event_params) WHERE key = 'product_name') AS product_name,"
+    + " (SELECT value.string_value FROM UNNEST(event_params) WHERE key = 'page_path') AS page_path,"
+    + " (SELECT value.string_value FROM UNNEST(event_params) WHERE key = 'last_updated') AS last_updated_raw,"
+    + " COUNT(*) AS page_views"
+    + " FROM `" + PROJECT + "." + DATASET + ".events_*`"
+    + " WHERE event_name = 'af_content_freshness'"
+    + " AND _TABLE_SUFFIX BETWEEN '" + start + "' AND '" + end + "'"
+    + " GROUP BY 1,2,3,4"
+    + " HAVING page_title IS NOT NULL AND product_name IS NOT NULL"
+    + " ORDER BY page_views DESC"
+    + " LIMIT 200";
+}
+
+function parseDays(raw, todayMs) {
+  if (!raw) return null;
+  var m = raw.match(/(\d+) days? ago/);
+  if (m) return parseInt(m[1]);
+  if (raw.indexOf('a day ago') !== -1) return 1;
+  if (raw.indexOf('minute') !== -1 || raw.indexOf('second') !== -1) return 0;
+  var dm = raw.match(/(\d{1,2}) ([A-Za-z]+),? (\d{4})/);
+  if (dm) {
+    var months = {January:0,February:1,March:2,April:3,May:4,June:5,July:6,August:7,September:8,October:9,November:10,December:11};
+    var month = months[dm[2]];
+    if (month !== undefined) {
+      var d = new Date(parseInt(dm[3]), month, parseInt(dm[1]));
+      return Math.round((todayMs - d.getTime()) / 86400000);
+    }
+  }
+  return null;
+}
+
+function bandFromDays(days) {
+  if (days === null) return 'unknown';
+  if (days <= 90) return 'fresh';
+  if (days <= 180) return 'aging';
+  if (days <= 365) return 'stale';
+  return 'critical';
 }
 
 async function loadData() {
+  document.getElementById('loading').style.display = 'block';
+  document.getElementById('main').style.display = 'none';
+  document.getElementById('error').style.display = 'none';
   try {
-    const res = await fetch(
+    var res = await fetch(
       'https://bigquery.googleapis.com/bigquery/v2/projects/' + PROJECT + '/queries',
       {
         method: 'POST',
@@ -200,62 +222,57 @@ async function loadData() {
         body: JSON.stringify({ query: buildQuery(), useLegacySql: false, timeoutMs: 30000 })
       }
     );
-    const json = await res.json();
-    if (json.error) { showError(json.error.message); return; }
-
-    const fields = json.schema.fields.map(f => f.name);
-    allData = (json.rows || []).map(row => {
-      const obj = {};
-      row.f.forEach((cell, i) => { obj[fields[i]] = cell.v; });
-      obj.days_since_update = obj.days_since_update ? parseFloat(obj.days_since_update) : null;
+    var json = await res.json();
+    if (json.error) {
+      if (json.error.code === 401) { localStorage.removeItem('bq_token'); refreshToken(loadData); return; }
+      showError(json.error.message); return;
+    }
+    var now = new Date();
+    var fields = json.schema.fields.map(function(f) { return f.name; });
+    allData = (json.rows || []).map(function(row) {
+      var obj = {};
+      row.f.forEach(function(cell, i) { obj[fields[i]] = cell.v; });
       obj.page_views = parseInt(obj.page_views, 10);
+      obj.days_since_update = parseDays(obj.last_updated_raw, now.getTime());
+      obj.freshness_band = bandFromDays(obj.days_since_update);
       return obj;
     });
-
     document.getElementById('last-updated').textContent =
-      'Live data · last 14 days · ' + allData.length + ' pages · refreshed ' + new Date().toLocaleTimeString();
+      'Live data · last 14 days · ' + allData.length + ' pages · refreshed ' + now.toLocaleTimeString();
     document.getElementById('loading').style.display = 'none';
     document.getElementById('main').style.display = 'block';
     renderAll();
   } catch(e) { showError(e.message); }
 }
 
-function showError(msg) {
-  document.getElementById('loading').style.display = 'none';
-  const el = document.getElementById('error');
-  el.style.display = 'block';
-  el.textContent = '⚠️ ' + msg;
-}
-
 function renderAll() { renderPills(); renderChart(); renderCards(); }
 
 function renderPills() {
-  const products = ['ALL PRODUCTS', ...Array.from(new Set(allData.map(d => d.product_name))).sort()];
-  const wrap = document.getElementById('pills');
+  var products = ['ALL PRODUCTS'].concat(Array.from(new Set(allData.map(function(d) { return d.product_name; }))).sort());
+  var wrap = document.getElementById('pills');
   wrap.innerHTML = '';
-  products.forEach(p => {
-    const btn = document.createElement('button');
+  products.forEach(function(p) {
+    var btn = document.createElement('button');
     btn.className = 'pill' + (p === selectedProduct ? ' active' : '');
     btn.textContent = p;
-    btn.onclick = () => { selectedProduct = p; renderAll(); };
+    btn.onclick = function() { selectedProduct = p; renderAll(); };
     wrap.appendChild(btn);
   });
 }
 
 function renderChart() {
-  const data = selectedProduct === 'ALL PRODUCTS' ? allData : allData.filter(d => d.product_name === selectedProduct);
-  const svg = document.getElementById('chart');
+  var data = selectedProduct === 'ALL PRODUCTS' ? allData : allData.filter(function(d) { return d.product_name === selectedProduct; });
+  var svg = document.getElementById('chart');
   svg.innerHTML = '';
-  const W = 600, H = 400, maxDays = 500;
-  const maxViews = Math.max(...allData.map(d => d.page_views));
-  const toX = d => (1 - Math.min((d.days_since_update || 0) / maxDays, 1)) * W;
-  const toY = d => (1 - Math.min(d.page_views / maxViews, 1)) * H;
-  const toR = d => 3 + (d.page_views / maxViews) * 12;
-  const ns = 'http://www.w3.org/2000/svg';
-  const rect = (x,y,w,h,fill,op) => { const el = document.createElementNS(ns,'rect'); el.setAttribute('x',x); el.setAttribute('y',y); el.setAttribute('width',w); el.setAttribute('height',h); el.setAttribute('fill',fill); el.setAttribute('opacity',op); svg.appendChild(el); };
-  const line = (x1,y1,x2,y2) => { const el = document.createElementNS(ns,'line'); el.setAttribute('x1',x1); el.setAttribute('y1',y1); el.setAttribute('x2',x2); el.setAttribute('y2',y2); el.setAttribute('stroke','#334155'); el.setAttribute('stroke-width','1'); el.setAttribute('stroke-dasharray','4,4'); svg.appendChild(el); };
-  const txt = (x,y,str,fill,size) => { const el = document.createElementNS(ns,'text'); el.setAttribute('x',x); el.setAttribute('y',y); el.setAttribute('fill',fill); el.setAttribute('font-size',size); el.setAttribute('font-weight','700'); el.setAttribute('letter-spacing','1'); el.setAttribute('font-family','system-ui,sans-serif'); el.textContent=str; svg.appendChild(el); };
-
+  var W = 600, H = 400, maxDays = 500;
+  var maxViews = Math.max.apply(null, allData.map(function(d) { return d.page_views; }));
+  var toX = function(d) { return (1 - Math.min((d.days_since_update || 0) / maxDays, 1)) * W; };
+  var toY = function(d) { return (1 - Math.min(d.page_views / maxViews, 1)) * H; };
+  var toR = function(d) { return 3 + (d.page_views / maxViews) * 12; };
+  var ns = 'http://www.w3.org/2000/svg';
+  var rect = function(x,y,w,h,fill,op) { var el = document.createElementNS(ns,'rect'); el.setAttribute('x',x); el.setAttribute('y',y); el.setAttribute('width',w); el.setAttribute('height',h); el.setAttribute('fill',fill); el.setAttribute('opacity',op); svg.appendChild(el); };
+  var line = function(x1,y1,x2,y2) { var el = document.createElementNS(ns,'line'); el.setAttribute('x1',x1); el.setAttribute('y1',y1); el.setAttribute('x2',x2); el.setAttribute('y2',y2); el.setAttribute('stroke','#334155'); el.setAttribute('stroke-width','1'); el.setAttribute('stroke-dasharray','4,4'); svg.appendChild(el); };
+  var txt = function(x,y,str,fill,size) { var el = document.createElementNS(ns,'text'); el.setAttribute('x',x); el.setAttribute('y',y); el.setAttribute('fill',fill); el.setAttribute('font-size',size); el.setAttribute('font-weight','700'); el.setAttribute('letter-spacing','1'); el.setAttribute('font-family','system-ui,sans-serif'); el.textContent=str; svg.appendChild(el); };
   rect(0,0,300,200,'#1e3a2e',0.4); rect(300,0,300,200,'#1e3a2e',0.7);
   rect(0,200,300,200,'#3a1e1e',0.4); rect(300,200,300,200,'#3a2a1e',0.4);
   line(300,0,300,400); line(0,200,600,200);
@@ -263,14 +280,13 @@ function renderChart() {
   txt(308,16,'FRESH','#4ade80bb',9); txt(308,27,'POPULAR ✓','#4ade80bb',9);
   txt(8,216,'STALE','#f8717188',9); txt(8,227,'UNPOPULAR','#f8717188',9);
   txt(308,216,'STALE','#fb923cbb',9); txt(308,227,'POPULAR !','#fb923cbb',9);
-
-  const tt = document.getElementById('tooltip');
-  data.forEach(d => {
+  var tt = document.getElementById('tooltip');
+  data.forEach(function(d) {
     if (d.days_since_update === null) return;
-    const c = document.createElementNS(ns,'circle');
+    var c = document.createElementNS(ns,'circle');
     c.setAttribute('cx', toX(d)); c.setAttribute('cy', toY(d)); c.setAttribute('r', toR(d));
     c.setAttribute('fill', COLORS[d.freshness_band] || '#6b7280'); c.setAttribute('opacity','0.85');
-    c.addEventListener('mouseenter', e => {
+    c.addEventListener('mouseenter', function(e) {
       tt.style.display='block'; tt.style.left=(e.clientX+12)+'px'; tt.style.top=(e.clientY-10)+'px';
       document.getElementById('tt-title').textContent = d.page_title;
       document.getElementById('tt-product').textContent = d.product_name;
@@ -278,32 +294,33 @@ function renderChart() {
       document.getElementById('tt-band').style.color = COLORS[d.freshness_band];
       document.getElementById('tt-meta').textContent = d.days_since_update + ' days old · ' + d.page_views + ' views';
     });
-    c.addEventListener('mousemove', e => { tt.style.left=(e.clientX+12)+'px'; tt.style.top=(e.clientY-10)+'px'; });
-    c.addEventListener('mouseleave', () => { tt.style.display='none'; });
+    c.addEventListener('mousemove', function(e) { tt.style.left=(e.clientX+12)+'px'; tt.style.top=(e.clientY-10)+'px'; });
+    c.addEventListener('mouseleave', function() { tt.style.display='none'; });
     svg.appendChild(c);
   });
 }
 
 function renderCards() {
-  const data = selectedProduct === 'ALL PRODUCTS' ? allData : allData.filter(d => d.product_name === selectedProduct);
-  const medianViews = [...allData].sort((a,b)=>a.page_views-b.page_views)[Math.floor(allData.length/2)].page_views;
-  const keepAsIs = data.filter(d=>(d.days_since_update||999)<=MEDIAN_DAYS && d.page_views>=medianViews);
-  const urgent   = data.filter(d=>(d.days_since_update||999)> MEDIAN_DAYS && d.page_views>=medianViews);
-  const promote  = data.filter(d=>(d.days_since_update||999)<=MEDIAN_DAYS && d.page_views< medianViews);
-  const archive  = data.filter(d=>(d.days_since_update||999)> MEDIAN_DAYS && d.page_views< medianViews);
-  const cards = [
+  var data = selectedProduct === 'ALL PRODUCTS' ? allData : allData.filter(function(d) { return d.product_name === selectedProduct; });
+  var sorted = allData.slice().sort(function(a,b) { return a.page_views - b.page_views; });
+  var medianViews = sorted[Math.floor(sorted.length/2)].page_views;
+  var keepAsIs = data.filter(function(d) { return (d.days_since_update||999)<=MEDIAN_DAYS && d.page_views>=medianViews; });
+  var urgent   = data.filter(function(d) { return (d.days_since_update||999)> MEDIAN_DAYS && d.page_views>=medianViews; });
+  var promote  = data.filter(function(d) { return (d.days_since_update||999)<=MEDIAN_DAYS && d.page_views< medianViews; });
+  var archive  = data.filter(function(d) { return (d.days_since_update||999)> MEDIAN_DAYS && d.page_views< medianViews; });
+  var cards = [
     {label:'KEEP AS-IS', count:keepAsIs.length, desc:'Fresh & popular – your best content', color:'#4ade80'},
     {label:'UPDATE URGENTLY', count:urgent.length, desc:'High traffic but content is aging', color:'#fb923c'},
     {label:'PROMOTE', count:promote.length, desc:'Good content, needs more visibility', color:'#94a3b8'},
     {label:'ARCHIVE CANDIDATES', count:archive.length, desc:'Old & low traffic – review for removal', color:'#f87171'},
   ];
-  document.getElementById('cards').innerHTML = cards.map(c =>
-    '<div class="card" style="border-top:2px solid ' + c.color + '">'
-    + '<div class="card-label">' + c.label + '</div>'
-    + '<div class="card-count" style="color:' + c.color + '">' + c.count + '</div>'
-    + '<div class="card-desc">' + c.desc + '</div>'
-    + '</div>'
-  ).join('');
+  document.getElementById('cards').innerHTML = cards.map(function(c) {
+    return '<div class="card" style="border-top:2px solid ' + c.color + '">'
+      + '<div class="card-label">' + c.label + '</div>'
+      + '<div class="card-count" style="color:' + c.color + '">' + c.count + '</div>'
+      + '<div class="card-desc">' + c.desc + '</div>'
+      + '</div>';
+  }).join('');
 }
 </script>
 </body>
