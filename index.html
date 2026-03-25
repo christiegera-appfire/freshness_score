@@ -32,7 +32,8 @@
   .pill.active { border-color: #4ade80; background: #4ade80; color: #0f1117; }
   .pill:hover:not(.active) { border-color: #64748b; color: #e2e8f0; }
 
-  #chart-wrap { position: relative; background: #1a1f2e; border-radius: 12px; padding: 14px 14px 36px 36px; margin-bottom: 14px; }
+  #chart-and-cards { display: flex; gap: 12px; align-items: stretch; margin-bottom: 14px; }
+  #chart-wrap { position: relative; background: #1a1f2e; border-radius: 12px; padding: 14px 14px 36px 36px; flex: 1; min-width: 0; }
   #y-label { position: absolute; left: 4px; top: 50%; transform: translateY(-50%) rotate(-90deg); font-size: 9px; color: #64748b; letter-spacing: 0.1em; white-space: nowrap; }
   #x-label { text-align: center; font-size: 9px; color: #64748b; letter-spacing: 0.1em; margin-top: 6px; }
   svg { width: 100%; height: auto; display: block; }
@@ -44,8 +45,8 @@
   #tooltip .t-band { font-weight: 600; }
   #tooltip .t-meta { color: #64748b; margin-top: 4px; }
 
-  #cards { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; }
-  .card { background: #1a1f2e; border-radius: 10px; padding: 14px; }
+  #cards { display: flex; flex-direction: column; gap: 10px; width: 160px; flex-shrink: 0; }
+  .card { background: #1a1f2e; border-radius: 10px; padding: 14px; flex: 1; }
   .card-label { font-size: 9px; color: #64748b; letter-spacing: 0.1em; font-weight: 600; margin-bottom: 6px; text-transform: uppercase; }
   .card-count { font-size: 32px; font-weight: 700; line-height: 1; margin-bottom: 4px; }
   .card-desc { font-size: 10px; color: #64748b; }
@@ -76,12 +77,14 @@
   <div id="error"></div>
   <div id="main" style="display:none">
     <div id="pills"></div>
-    <div id="chart-wrap">
-      <div id="y-label">↑ PAGE VIEWS (POPULARITY)</div>
-      <svg id="chart" viewBox="0 0 600 380" xmlns="http://www.w3.org/2000/svg"></svg>
-      <div id="x-label">← STALE &nbsp;&nbsp;&nbsp; CONTENT AGE (FRESHNESS) &nbsp;&nbsp;&nbsp; FRESH →</div>
+    <div id="chart-and-cards">
+      <div id="chart-wrap">
+        <div id="y-label">↑ PAGE VIEWS (POPULARITY)</div>
+        <svg id="chart" viewBox="0 0 600 380" xmlns="http://www.w3.org/2000/svg"></svg>
+        <div id="x-label">← STALE &nbsp;&nbsp;&nbsp; CONTENT AGE (FRESHNESS) &nbsp;&nbsp;&nbsp; FRESH →</div>
+      </div>
+      <div id="cards"></div>
     </div>
-    <div id="cards"></div>
   </div>
 </div>
 
