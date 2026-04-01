@@ -588,10 +588,10 @@ function renderChart() {
   rect(0,0,300,190,'#1e3a2e',0.4); rect(300,0,300,190,'#1e3a2e',0.7);
   rect(0,190,300,190,'#3a1e1e',0.4); rect(300,190,300,190,'#3a2a1e',0.4);
   line(300,0,300,380); line(0,190,600,190);
-  txt(8,14,'STALE','#f8717188',9); txt(8,24,'UNPOPULAR','#f8717188',9);
-  txt(308,14,'FRESH','#4ade80bb',9); txt(308,24,'UNPOPULAR','#4ade80bb',9);
-  txt(8,204,'STALE','#fb923cbb',9); txt(8,214,'POPULAR !','#fb923cbb',9);
-  txt(308,204,'FRESH','#4ade8088',9); txt(308,214,'POPULAR ✓','#4ade8088',9);
+  txt(8,14,'STALE','#fb923cbb',9); txt(8,24,'POPULAR !','#fb923cbb',9);
+  txt(308,14,'FRESH','#4ade80bb',9); txt(308,24,'POPULAR ✓','#4ade80bb',9);
+  txt(8,204,'STALE','#f8717188',9); txt(8,214,'UNPOPULAR','#f8717188',9);
+  txt(308,204,'FRESH','#4ade8088',9); txt(308,214,'UNPOPULAR','#4ade8088',9);
 
   var tt = document.getElementById('tooltip');
   data.forEach(function(d) {
